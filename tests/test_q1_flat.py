@@ -68,6 +68,7 @@ def quat_apply(q, v):
     return v + 2*(q[:, 3:4]*cross + torch.cross(q[:, :3], cross, dim=-1))
 NS["quat_apply"] = quat_apply
 load_code("wheel_legged_gym/envs/q1/q1_config.py", NS)
+load_code("wheel_legged_gym/utils/terrain.py", NS)
 load_code("wheel_legged_gym/envs/q1/q1.py", NS)
 
 
@@ -105,6 +106,10 @@ class TensorGym:
 def make_env(count=32, permutation=None, max_delay_ms=0, task_class=Q1Flat, cfg_class=Q1FlatCfg):
     cfg = cfg_class()
     cfg.env.num_envs = count
+    # Existing behavioral tests explicitly use a plane. Terrain integration
+    # tests attach real height arrays and enable the rough-terrain settings.
+    cfg.terrain.mesh_type = "plane"
+    cfg.terrain.curriculum = False
     cfg.domain_rand.delay_ms_range = [0, max_delay_ms]
     cfg.domain_rand.randomize_action_delay = max_delay_ms > 0
     env = task_class.__new__(task_class)

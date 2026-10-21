@@ -1,11 +1,99 @@
-"""Joint PD Q1 task; relative references are observable by the policy."""
+"""Joint PD Q1 on mixed terrain, with terrain-relative wheel diagnostics."""
 import math
 
+import numpy as np
 import torch
-from isaacgym import gymtorch
+from isaacgym import gymtorch, terrain_utils
 from isaacgym.torch_utils import quat_apply
 
 from wheel_legged_gym.envs.q1_flat.q1_flat import Q1Flat
+from wheel_legged_gym.utils.terrain import Terrain
+
+
+class Q1Terrain(Terrain):
+    """Reuse Gym's T0 terrain primitives with explicit Q1 severity ranges."""
+
+    def __init__(self, cfg, num_robots):
+        weights = np.asarray(cfg.terrain_proportions, dtype=float)
+        if (len(weights) != len(cfg.terrain_names)
+                or len(weights) != len(cfg.terrain_labels)
+                or np.any(weights < 0) or not np.isclose(weights.sum(), 1.0)):
+            raise ValueError("Q1 terrain names, labels and normalized proportions must agree")
+        if not 0 < cfg.stair_height_range[0] <= cfg.stair_height_range[1] <= 0.20:
+            raise ValueError("Q1 stair risers must be in (0, 0.20] metres")
+        if cfg.num_rows < 1 or cfg.num_cols < 1:
+            raise ValueError("Q1 terrain needs at least one row and column")
+        self.terrain_classes = np.full((cfg.num_rows, cfg.num_cols), -1, dtype=np.int64)
+        super().__init__(cfg, num_robots)
+
+    def curiculum(self):
+        if self.cfg.selected:
+            self.selected_terrain()
+            return
+        # Unlike i / num_rows, this includes the configured maximum: 20 cm.
+        for col in range(self.cfg.num_cols):
+            for row in range(self.cfg.num_rows):
+                difficulty = row / max(self.cfg.num_rows - 1, 1)
+                choice = (col + 0.5) / self.cfg.num_cols
+                self.add_terrain_to_map(self.make_terrain(choice, difficulty), row, col)
+
+    def randomized_terrain(self):
+        # Preserve terrain-type coverage even when level curriculum is disabled.
+        for col in range(self.cfg.num_cols):
+            for row in range(self.cfg.num_rows):
+                self.add_terrain_to_map(self.make_terrain(
+                    (col + 0.5) / self.cfg.num_cols, np.random.uniform()), row, col)
+
+    def selected_terrain(self):
+        index = self.cfg.terrain_names.index(self.cfg.selected_type)
+        lower = 0.0 if index == 0 else self.proportions[index - 1]
+        if self.cfg.terrain_proportions[index] <= 0:
+            raise ValueError("Selected Q1 terrain must have a positive proportion")
+        choice = (lower + self.proportions[index]) / 2
+        for row in range(self.cfg.num_rows):
+            for col in range(self.cfg.num_cols):
+                self.add_terrain_to_map(self.make_terrain(
+                    choice, self.cfg.selected_difficulty), row, col)
+
+    def make_terrain(self, choice, difficulty):
+        cfg = self.cfg
+        index = min(int(np.searchsorted(self.proportions, choice, side="right")),
+                    len(cfg.terrain_names) - 1)
+        name = cfg.terrain_names[index]
+        difficulty = float(np.clip(difficulty, 0, 1))
+        lerp = lambda values: values[0] + (values[1] - values[0]) * difficulty
+        terrain = terrain_utils.SubTerrain(
+            "q1_" + name, width=self.length_per_env_pixels,
+            length=self.width_per_env_pixels, vertical_scale=cfg.vertical_scale,
+            horizontal_scale=cfg.horizontal_scale)
+        terrain.terrain_type = cfg.terrain_labels[index]
+        if name in ("slope_up", "slope_down", "rough_slope"):
+            slope = lerp(cfg.rough_slope_range if name == "rough_slope" else cfg.slope_range)
+            terrain_utils.pyramid_sloped_terrain(
+                terrain, slope=-slope if name == "slope_down" else slope,
+                platform_size=cfg.platform_size)
+            if name == "rough_slope":
+                terrain_utils.random_uniform_terrain(
+                    terrain, min_height=cfg.rough_height_range[0],
+                    max_height=cfg.rough_height_range[1], step=cfg.rough_height_step,
+                    downsampled_scale=cfg.rough_downsampled_scale)
+        elif name in ("stairs_up", "stairs_down"):
+            height = lerp(cfg.stair_height_range)
+            terrain_utils.pyramid_stairs_terrain(
+                terrain, step_width=cfg.stair_width,
+                step_height=-height if name == "stairs_down" else height,
+                platform_size=cfg.platform_size)
+        elif name == "discrete":
+            terrain_utils.discrete_obstacles_terrain(
+                terrain, lerp(cfg.obstacle_height_range), cfg.obstacle_size_range[0],
+                cfg.obstacle_size_range[1], cfg.num_obstacles, platform_size=cfg.platform_size)
+        elif name != "flat":
+            raise ValueError("Unsupported Q1 terrain: " + name)
+        return terrain
+
+    def add_terrain_to_map(self, terrain, row, col):
+        super().add_terrain_to_map(terrain, row, col)
+        self.terrain_classes[row, col] = terrain.terrain_type
 
 
 DIAGNOSTIC_FIELDS = [
@@ -23,6 +111,129 @@ DIAGNOSTIC_FIELDS = [
 
 
 class Q1(Q1Flat):
+    def create_sim(self):
+        self.up_axis_idx = 2
+        self.sim = self.gym.create_sim(self.sim_device_id, self.graphics_device_id,
+                                       self.physics_engine, self.sim_params)
+        mesh_type = self.cfg.terrain.mesh_type
+        if mesh_type in ("heightfield", "trimesh"):
+            self.terrain = Q1Terrain(self.cfg.terrain, self.num_envs)
+        if mesh_type == "plane":
+            self._create_ground_plane()
+        elif mesh_type == "heightfield":
+            self._create_heightfield()
+        elif mesh_type == "trimesh":
+            self._create_trimesh()
+        else:
+            raise ValueError("Q1 requires plane, heightfield or trimesh terrain")
+        self._create_envs()
+
+    def _get_env_origins(self):
+        self.cfg.terrain.max_init_terrain_level = min(
+            self.cfg.terrain.max_init_terrain_level, self.cfg.terrain.num_rows - 1)
+        super()._get_env_origins()
+        if self.custom_origins:
+            self.terrain_class_map = torch.as_tensor(
+                self.terrain.terrain_classes, device=self.device, dtype=torch.long)
+            self._refresh_terrain_classes()
+            self.terrain_y_max = (self.cfg.terrain.num_cols * self.cfg.terrain.terrain_width
+                                  + self.cfg.terrain.border_size)
+
+    def _refresh_terrain_classes(self):
+        self.env_class = self.terrain_class_map[self.terrain_levels, self.terrain_types]
+        for name, label in (("flat", -1), ("smooth_slope", 0), ("rough_slope", 1),
+                            ("stair_down", 2), ("stair_up", 3), ("discrete", 4)):
+            setattr(self, name + "_idx", (self.env_class == label).nonzero(as_tuple=False).flatten())
+        self.basic_terrain_idx = torch.cat((self.flat_idx, self.smooth_slope_idx,
+                                           self.rough_slope_idx, self.stair_down_idx))
+        self.advanced_terrain_idx = torch.cat((self.stair_up_idx, self.discrete_idx))
+
+    def _flat_terrain_mask(self):
+        if self.cfg.terrain.mesh_type == "plane":
+            return torch.ones(self.num_envs, device=self.device, dtype=torch.bool)
+        return self.env_class == -1
+
+    def _terrain_surface(self, xy):
+        """Height and upward normal at arbitrary world XY; cliffs stay discrete.
+
+        Smooth cells use the heightfield's triangle interpolation. Vertical
+        faces moved by Gym's mesh conversion are approximate here; actual
+        contact force remains authoritative for wheel support on rough tiles.
+        """
+        if self.cfg.terrain.mesh_type == "plane":
+            height = torch.zeros_like(xy[..., 0])
+            normal = torch.zeros(*height.shape, 3, device=self.device)
+            normal[..., 2] = 1
+            return height, normal
+        cfg = self.cfg.terrain
+        grid = (xy + cfg.border_size) / cfg.horizontal_scale
+        x = grid[..., 0].clamp(0, self.height_samples.shape[0] - 1.001)
+        y = grid[..., 1].clamp(0, self.height_samples.shape[1] - 1.001)
+        ix, iy = x.long(), y.long()
+        fx, fy = x - ix, y - iy
+        h00 = self.height_samples[ix, iy].float() * cfg.vertical_scale
+        h10 = self.height_samples[ix + 1, iy].float() * cfg.vertical_scale
+        h01 = self.height_samples[ix, iy + 1].float() * cfg.vertical_scale
+        h11 = self.height_samples[ix + 1, iy + 1].float() * cfg.vertical_scale
+        lower = fx >= fy
+        dx = torch.where(lower, h10 - h00, h11 - h01)
+        dy = torch.where(lower, h11 - h10, h01 - h00)
+        height = h00 + fx*dx + fy*dy
+        spread = torch.stack((h00, h10, h01, h11), dim=-1)
+        cliff = (spread.amax(-1) - spread.amin(-1)) > cfg.slope_treshold * cfg.horizontal_scale
+        height = torch.where(cliff, h00, height)
+        dx = torch.where(cliff, torch.zeros_like(dx), dx) / cfg.horizontal_scale
+        dy = torch.where(cliff, torch.zeros_like(dy), dy) / cfg.horizontal_scale
+        normal = torch.stack((-dx, -dy, torch.ones_like(height)), dim=-1)
+        normal = normal / normal.norm(dim=-1, keepdim=True).clamp_min(1e-6)
+        return height, normal
+
+    def _get_heights(self, env_ids=None):
+        # Preserve Q1's 77 probes; handle tensor subsets and empty subsets.
+        ids = slice(None) if env_ids is None else env_ids
+        q = self.base_quat[ids]
+        yaw = torch.atan2(2*(q[:, 3]*q[:, 2]+q[:, 0]*q[:, 1]),
+                          1-2*(q[:, 1].square()+q[:, 2].square()))
+        local = self.height_points[ids]
+        xy = torch.stack((torch.cos(yaw)[:, None]*local[..., 0] - torch.sin(yaw)[:, None]*local[..., 1],
+                          torch.sin(yaw)[:, None]*local[..., 0] + torch.cos(yaw)[:, None]*local[..., 1]), dim=-1)
+        return self._terrain_surface(xy + self.root_states[ids, None, :2])[0]
+
+    def _reset_root_states(self, env_ids):
+        super()._reset_root_states(env_ids)
+        # Curriculum can move the reset robot to a different height. Do not
+        # expose the previous tile's heights in the reset critic observation.
+        if not isinstance(self.measured_heights, torch.Tensor):
+            self.measured_heights = self._get_heights()
+        else:
+            self.measured_heights[env_ids] = self._get_heights(env_ids)
+        self.base_height[env_ids] = (self.root_states[env_ids, 2]
+                                    - self._terrain_surface(self.root_states[env_ids, :2])[0])
+
+    def _update_terrain_curriculum(self, env_ids):
+        if not self.init_done or len(env_ids) == 0:
+            return
+        cfg = self.cfg.terrain
+        enough = self.metric_steps[env_ids] * self.dt >= cfg.curriculum_min_duration_s
+        requested = self.terrain_command_distance[env_ids]
+        travelled = self.terrain_travel_distance[env_ids]
+        distance = (self.root_states[env_ids, :2] - self.env_origins[env_ids, :2]).norm(dim=1)
+        error = self.metric_sum[env_ids, 0] / self.metric_steps[env_ids].clamp_min(1)
+        failed = getattr(self, "physical_failure", torch.zeros_like(self.reset_buf))[env_ids]
+        move_up = (enough & ~failed & self.time_out_buf[env_ids]
+                   & (distance >= cfg.curriculum_min_distance)
+                   & (requested >= cfg.curriculum_min_distance)
+                   & (travelled >= 0.65*requested) & (error <= cfg.curriculum_tracking_error))
+        move_down = ((failed & (self.metric_steps[env_ids]*self.dt >= 1.0))
+                     | (enough & (requested >= cfg.curriculum_min_distance)
+                        & (travelled < 0.5*requested))) & ~move_up
+        self.success_ids, self.fail_ids = env_ids[move_up], env_ids[move_down]
+        self.terrain_levels[env_ids] = (self.terrain_levels[env_ids]
+                                        + move_up.long() - move_down.long()).clamp(0, self.max_terrain_level-1)
+        self.env_origins[env_ids] = self.terrain_origins[
+            self.terrain_levels[env_ids], self.terrain_types[env_ids]]
+        self._refresh_terrain_classes()
+
     def _init_buffers(self):
         super()._init_buffers()
         self.rigid_body_states = gymtorch.wrap_tensor(
@@ -50,6 +261,10 @@ class Q1(Q1Flat):
         self.wheel_saturation = torch.zeros_like(self.wheel_clearance)
         self.metric_sum = torch.zeros(self.num_envs, 7, device=self.device)
         self.metric_steps = torch.zeros(self.num_envs, device=self.device)
+        self.terrain_command_distance = torch.zeros_like(self.metric_steps)
+        self.terrain_travel_distance = torch.zeros_like(self.metric_steps)
+        self.command_sample_step = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
+        self.needs_command_sample = torch.ones(self.num_envs, device=self.device, dtype=torch.bool)
         self.applied_commands = self.commands.clone()
         self.position_target = torch.zeros_like(self.dof_pos)
         self.velocity_target = torch.zeros_like(self.dof_vel)
@@ -72,6 +287,15 @@ class Q1(Q1Flat):
     def _resample_commands(self, env_ids):
         if self.external_commands or len(env_ids) == 0:
             return
+        flat = self._flat_terrain_mask()
+        rough_period = max(1, int(self.cfg.commands.rough_resampling_time / self.dt))
+        resample = (flat[env_ids] | self.needs_command_sample[env_ids]
+                    | (self.episode_length_buf[env_ids]-self.command_sample_step[env_ids] >= rough_period))
+        env_ids = env_ids[resample]
+        if len(env_ids) == 0:
+            return
+        self.command_sample_step[env_ids] = self.episode_length_buf[env_ids]
+        self.needs_command_sample[env_ids] = False
         maximum = max(abs(x) for x in self.cfg.commands.ranges.lin_vel_x)
         cfg = self.cfg.commands
         yaw_max = max(abs(x) for x in cfg.ranges.ang_vel_yaw)
@@ -81,6 +305,7 @@ class Q1(Q1Flat):
         magnitude = torch.where(endpoint, torch.full_like(magnitude, maximum), magnitude)
         sign = torch.where(torch.rand(len(env_ids), device=self.device) < 0.5, -1.0, 1.0)
         stand = torch.rand(len(env_ids), device=self.device) < cfg.stand_probability
+        stand &= flat[env_ids]
         if maximum == 0 and yaw_max == 0:
             stand[:] = True
         self.command_targets[env_ids, 0] = torch.where(stand, torch.zeros_like(magnitude), magnitude * sign)
@@ -107,6 +332,8 @@ class Q1(Q1Flat):
 
     def _post_physics_step_callback(self):
         super()._post_physics_step_callback()
+        # The wide probe average jumps near stair edges; use ground under root.
+        self.base_height[:] = self.root_states[:, 2] - self._terrain_surface(self.root_states[:, :2])[0]
         delta = (self.command_targets[:, 0] - self.commands[:, 0]).clamp(
             -self.cfg.commands.acceleration_limit * self.dt,
             self.cfg.commands.acceleration_limit * self.dt
@@ -129,6 +356,8 @@ class Q1(Q1Flat):
             (self.applied_commands[:, 1]-self.base_ang_vel[:, 2]).abs(),
         ), dim=1)
         self.metric_steps += 1
+        self.terrain_command_distance += self.applied_commands[:, 0].abs() * self.dt
+        self.terrain_travel_distance += self.base_lin_vel[:, 0].abs() * self.dt
         self._record_diagnostics()
 
     def _record_diagnostics(self):
@@ -215,20 +444,28 @@ class Q1(Q1Flat):
         center_offset = quat_apply(quaternion, self.wheel_center_local.reshape(-1, 3)).view_as(self.wheel_center_local)
         com_offset = quat_apply(quaternion, self.wheel_com_local.reshape(-1, 3)).view_as(self.wheel_com_local)
         center = state[:, :, :3] + center_offset
-        perpendicular = self.world_up - axis[:, :, 2:3] * axis
+        _, normal = self._terrain_surface(center[..., :2])
+        axial = (normal * axis).sum(dim=2, keepdim=True)
+        perpendicular = normal - axial * axis
         radial_norm = perpendicular.norm(dim=2, keepdim=True).clamp_min(1e-6)
         radius = self.cfg.asset.wheel_radius
-        bottom_offset = -radius * perpendicular / radial_norm - 0.5*cfg.wheel_width*axis[:, :, 2:3].sign()*axis
-        clearance = center[:, :, 2] + bottom_offset[:, :, 2]
+        bottom_offset = -radius * perpendicular / radial_norm - 0.5*cfg.wheel_width*axial.sign()*axis
+        bottom = center + bottom_offset
+        ground_height, _ = self._terrain_surface(bottom[..., :2])
+        clearance = (bottom[..., 2] - ground_height) * normal[..., 2]
         # PhysX link linear velocity is at COM, while pose is the link frame.
         # https://nvidia-omniverse.github.io/PhysX/physx/5.1.1/_build/physx/latest/class_px_articulation_link.html
         contact_velocity = state[:, :, 7:10] + torch.cross(state[:, :, 10:13], center_offset+bottom_offset-com_offset, dim=-1)
         forward = quat_apply(self.base_quat, self.body_forward)
         forward[:, 2] = 0.0
-        forward = forward / forward.norm(dim=1, keepdim=True).clamp_min(1e-6)
-        slip = (contact_velocity * forward[:, None]).sum(dim=2)
-        force = self.contact_forces[:, self.feet_indices, 2].clamp_min(0)
-        touch = (force > cfg.support_force) & (clearance < cfg.clearance_allowance)
+        tangent = forward[:, None] - (forward[:, None]*normal).sum(dim=2, keepdim=True)*normal
+        tangent = tangent / tangent.norm(dim=2, keepdim=True).clamp_min(1e-6)
+        slip = (contact_velocity * tangent).sum(dim=2)
+        force = (self.contact_forces[:, self.feet_indices] * normal).sum(dim=2).clamp_min(0)
+        # Mesh cliff locations are quantized; never discard real rough-ground
+        # support merely because the heightfield contact estimate is offset.
+        touch = ((force > cfg.support_force)
+                 & ((clearance < cfg.clearance_allowance) | ~self._flat_terrain_mask()[:, None]))
         return clearance, force, touch.float(), slip * touch
 
     def step(self, actions):
@@ -273,6 +510,7 @@ class Q1(Q1Flat):
     def reset_idx(self, env_ids):
         if len(env_ids) == 0:
             return
+        self.needs_command_sample[env_ids] = True
         valid = env_ids[self.metric_steps[env_ids] > 0]
         metrics = None if len(valid) == 0 else (self.metric_sum[valid] / self.metric_steps[valid, None]).mean(dim=0)
         for field in (self.command_targets, self.commands, self.idle_elapsed, self.parking_weight,
@@ -284,11 +522,14 @@ class Q1(Q1Flat):
         self.commands[env_ids, 2] = self.cfg.commands.ranges.height[0]
         self.wheel_clearance[env_ids] = 0.00534
         super().reset_idx(env_ids)
+        self.command_sample_step[env_ids] = 0
         if metrics is not None:
             for name, value in zip(("speed_mae", "worst_leg_error", "both_wheel_duty", "slip_speed", "wheel_saturation", "parking_drift", "yaw_mae"), metrics):
                 self.extras["episode"]["q1_"+name] = value
         self.metric_sum[env_ids] = 0
         self.metric_steps[env_ids] = 0
+        self.terrain_command_distance[env_ids] = 0
+        self.terrain_travel_distance[env_ids] = 0
 
     def check_termination(self):
         super().check_termination()
@@ -321,27 +562,40 @@ class Q1(Q1Flat):
         pure_turn &= self.applied_commands[:, 1].abs() >= self.cfg.commands.yaw_idle_threshold
         return pure_turn.float()*self._reward_tracking_ang_vel()
 
+    def _reward_base_height(self):
+        sigma = torch.where(self._flat_terrain_mask(),
+                            torch.full_like(self.base_height, self.cfg.rewards.height_sigma),
+                            torch.full_like(self.base_height, self.cfg.rewards.rough_height_sigma))
+        return torch.exp(-(self.base_height - self.commands[:, 2]).square() / sigma)
+
     def _reward_speed_error(self):
         return ((self.applied_commands[:, 0]-self.base_lin_vel[:, 0]).abs()-0.02).clamp_min(0).div(0.15).clamp(max=2)
 
     def _reward_actual_posture(self):
         error = (self.dof_pos[:, self.leg_dof_indices]-self.default_dof_pos[:, self.leg_dof_indices]).abs()
         cost = ((error-self.cfg.rewards.pose_allowance).clamp_min(0)/self.cfg.rewards.pose_error_scale).square().clamp(max=4)
-        return (cost.mean(1)+0.5*cost.amax(1))*self._quality_weight()
+        return (cost.mean(1)+0.5*cost.amax(1))*self._quality_weight()*self._flat_terrain_mask()
 
     def _reward_leg_symmetry(self):
         pose = self.dof_pos[:, self.leg_dof_indices].reshape(self.num_envs, 2, 2)
         turning = (self.commands[:, 1].abs()/0.6).clamp(0, 1)
-        return ((pose[:, 0]-pose[:, 1]).abs()-self.cfg.rewards.symmetry_allowance).clamp_min(0).div(0.2).square().mean(1).clamp(max=4)*self._quality_weight()*(1.0-0.5*turning)
+        return ((pose[:, 0]-pose[:, 1]).abs()-self.cfg.rewards.symmetry_allowance).clamp_min(0).div(0.2).square().mean(1).clamp(max=4)*self._quality_weight()*(1.0-0.5*turning)*self._flat_terrain_mask()
+
+    def _reward_nominal_state(self):
+        return super()._reward_nominal_state()*self._flat_terrain_mask()
 
     def _reward_rolling_contact(self):
         clearance = ((self.wheel_clearance-self.cfg.rewards.clearance_allowance).clamp_min(0)/self.cfg.rewards.clearance_scale).square().clamp(max=4)
         missing = 1.0-self.wheel_duty
         startup = (self.episode_length_buf*self.dt/0.2).clamp(0, 1)
-        return (missing.mean(1)+0.5*missing.amax(1)+clearance.mean(1))*startup
+        flat_cost = missing.mean(1)+0.5*missing.amax(1)+clearance.mean(1)
+        # Steps may briefly unload one wheel. Penalize losing both supports;
+        # falls still terminate on body collision, excessive tilt or low height.
+        rough_cost = missing.prod(dim=1)
+        return torch.where(self._flat_terrain_mask(), flat_cost, rough_cost)*startup
 
     def _reward_rolling_leg_motion(self):
-        return self.dof_vel[:, self.leg_dof_indices].square().mean(1)*self._quality_weight()
+        return self.dof_vel[:, self.leg_dof_indices].square().mean(1)*self._quality_weight()*self._flat_terrain_mask()
 
     def _reward_rolling_slip(self):
         return ((self.wheel_slip-self.cfg.rewards.slip_deadband).clamp_min(0)/self.cfg.rewards.slip_scale).square().clamp(max=4).mean(1)

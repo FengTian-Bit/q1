@@ -32,8 +32,6 @@ def play_q1(args):
     duration = getattr(args, "play_duration", 0.0)
     if duration < 0:
         raise ValueError("--play_duration must be nonnegative")
-    if duration == 0 and mode == "auto":
-        duration = 72.0
     env, _ = task_registry.make_env("q1", args=args, env_cfg=cfg)
     train_cfg.runner.resume = True
     runner, train_cfg = task_registry.make_alg_runner(env, args=args, train_cfg=train_cfg)
@@ -50,6 +48,10 @@ def play_q1(args):
         schedule = [(0, 0), (0.2, 0), (0, 0), (0, 0.3), (0, 0.6), (0, 0),
                     (0, -0.3), (0, -0.6), (0, 0), (0.2, 0.3), (0.2, -0.3), (0, 0),
                     (-0.2, 0.3), (-0.2, -0.3), (0, 0), (0.3, 0.6), (-0.3, -0.6), (0, 0)]
+    # Longer auto segments let a slow robot leave the central spawn platform.
+    segment_s = 4.0 if cfg.terrain.mesh_type == "plane" else cfg.commands.rough_resampling_time
+    if duration == 0 and mode == "auto":
+        duration = max(72.0, segment_s*len(schedule))
     controls = Q1Keyboard(env) if mode == "keyboard" else None
     accumulated = torch.zeros(len(DIAGNOSTIC_FIELDS), device=env.device)
     count, resets = 0, 0
@@ -68,7 +70,7 @@ def play_q1(args):
                             continue
                         controls.apply()
                     else:
-                        env.set_command_target(*schedule[int(count*env.dt/4.0) % len(schedule)])
+                        env.set_command_target(*schedule[int(count*env.dt/segment_s) % len(schedule)])
                     actions, _ = policy(env.obs_buf, env.obs_history)
                     env.step(actions)
                     row = env.last_diagnostics[0]
@@ -95,7 +97,8 @@ def play_q1(args):
             json.dump({"frames": count, "env0_resets": resets, "stage": args.q1_stage,
                        "play_mode": mode, "schedule_mps": [pair[0] for pair in schedule] if mode == "auto" else None,
                        "schedule_vx_yaw": schedule if mode == "auto" else None,
-                       "segment_s": 4.0 if mode == "auto" else None,
+                       "segment_s": segment_s if mode == "auto" else None,
+                       "terrain_mesh": cfg.terrain.mesh_type,
                        "load_run": args.load_run, "checkpoint": args.checkpoint,
                        "mean_absolute_signals": dict(zip(DIAGNOSTIC_FIELDS, (accumulated/max(count, 1)).cpu().tolist()))}, stream, indent=2)
         print("Q1 evaluation CSV:", stem+".csv")

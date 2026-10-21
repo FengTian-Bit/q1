@@ -1,4 +1,4 @@
-"""Q1 balance, straight travel, in-place turns and moving turns on flat ground."""
+"""Q1 balance, straight travel, in-place turns and moving turns on mixed terrain."""
 from wheel_legged_gym.envs.q1_flat.q1_flat_config import Q1FlatCfg, Q1FlatCfgPPO
 
 
@@ -8,8 +8,49 @@ class Q1Cfg(Q1FlatCfg):
         num_observations = 31  # original 27 + parking XY, cross-track, heading
         num_privileged_obs = 151  # original layout + 4 actor + 4 wheel support
 
+    class terrain(Q1FlatCfg.terrain):
+        # Reference: Dreamwaq-highplatform/legged_gym/envs/t0/t0/t0_config.py.
+        # Halve slopes/heights, not tread width, tile size or grid resolution.
+        mesh_type = "trimesh"
+        curriculum = True
+        horizontal_scale = 0.1
+        vertical_scale = 0.005
+        border_size = 25.0
+        terrain_length = 8.0
+        terrain_width = 8.0
+        num_rows = 20
+        num_cols = 20
+        max_init_terrain_level = 2  # start on gentle rows, then progress
+        static_friction = 1.0
+        dynamic_friction = 1.0
+        restitution = 0.0
+        slope_treshold = 0.75
+        selected = False
+        selected_type = "stairs_up"
+        selected_difficulty = 1.0
+        # Keep Q1's 77 height probes and the existing network dimensions.
+        terrain_names = ["flat", "slope_down", "slope_up", "rough_slope",
+                         "stairs_down", "stairs_up", "discrete"]
+        terrain_labels = [-1, 0, 0, 1, 2, 3, 4]
+        terrain_proportions = [0.10, 0.10, 0.10, 0.15, 0.20, 0.20, 0.15]
+        slope_range = [0.05, 0.35]  # rise/run, NOT radians
+        rough_slope_range = [0.05, 0.25]
+        rough_height_range = [-0.025, 0.025]
+        rough_height_step = 0.005
+        rough_downsampled_scale = 0.2
+        stair_height_range = [0.025, 0.20]  # single riser, both signs
+        stair_width = 0.25  # same nominal width as T0; Gym quantizes to cells
+        obstacle_height_range = [0.025, 0.15]
+        obstacle_size_range = [1.0, 2.0]
+        num_obstacles = 20
+        platform_size = 3.0
+        curriculum_min_duration_s = 10.0
+        curriculum_min_distance = 2.0  # leave the central 3 m spawn platform
+        curriculum_tracking_error = 0.10
+
     class commands(Q1FlatCfg.commands):
-        stand_probability = 0.25
+        stand_probability = 0.25  # flat tiles only
+        rough_resampling_time = 20.0
         minimum_motion_speed = 0.15
         endpoint_probability = 0.5
         acceleration_limit = 0.4  # m/s^2; applies in train and play
@@ -39,6 +80,7 @@ class Q1Cfg(Q1FlatCfg):
         idle_tracking_sigma = 0.0025
         yaw_tracking_sigma = 0.04
         height_sigma = 0.0009
+        rough_height_sigma = 0.01
         pose_allowance = 0.08
         pose_error_scale = 0.20
         symmetry_allowance = 0.08
