@@ -199,6 +199,34 @@ class Q1(Q1Flat):
                           torch.sin(yaw)[:, None]*local[..., 0] + torch.cos(yaw)[:, None]*local[..., 1]), dim=-1)
         return self._terrain_surface(xy + self.root_states[ids, None, :2])[0]
 
+    def _height_above_support(self):
+        """Use loaded wheel bottoms as the rough-ground height reference.
+
+        A trunk XY crossing a riser does not mean its wheels have climbed it.
+        Contact-weighted wheel geometry avoids the heightfield's moved cliff
+        vertices. When airborne, use conservative sampled ground; body contact
+        and tilt remain independent failure checks.
+        """
+        root_ground = self._terrain_surface(self.root_states[:, :2])[0]
+        if self.cfg.terrain.mesh_type == "plane":
+            return self.root_states[:, 2] - root_ground
+        state = self.rigid_body_states[:, self.feet_indices]
+        q = state[..., 3:7].reshape(-1, 4)
+        axis = quat_apply(q, self.wheel_axis_local.reshape(-1, 3)).view_as(self.wheel_axis_local)
+        offset = quat_apply(q, self.wheel_center_local.reshape(-1, 3)).view_as(self.wheel_center_local)
+        center = state[..., :3] + offset
+        extent = (self.cfg.asset.wheel_radius * (1-axis[..., 2].square()).clamp_min(0).sqrt()
+                  + 0.5*self.cfg.rewards.wheel_width*axis[..., 2].abs())
+        bottom = center[..., 2] - extent
+        force = self.contact_forces[:, self.feet_indices, 2].clamp_min(0)
+        weights = torch.where(force > self.cfg.rewards.support_force, force, torch.zeros_like(force))
+        load = weights.sum(dim=1)
+        contact_ground = (bottom*weights).sum(dim=1) / load.clamp_min(1e-6)
+        foot_ground = self._terrain_surface(center[..., :2])[0].amin(dim=1)
+        airborne_ground = torch.minimum(root_ground, foot_ground)
+        ground = torch.where(load > 0, contact_ground, airborne_ground)
+        return self.root_states[:, 2] - ground
+
     def _reset_root_states(self, env_ids):
         super()._reset_root_states(env_ids)
         # Curriculum can move the reset robot to a different height. Do not
@@ -332,8 +360,7 @@ class Q1(Q1Flat):
 
     def _post_physics_step_callback(self):
         super()._post_physics_step_callback()
-        # The wide probe average jumps near stair edges; use ground under root.
-        self.base_height[:] = self.root_states[:, 2] - self._terrain_surface(self.root_states[:, :2])[0]
+        self.base_height[:] = self._height_above_support()
         delta = (self.command_targets[:, 0] - self.commands[:, 0]).clamp(
             -self.cfg.commands.acceleration_limit * self.dt,
             self.cfg.commands.acceleration_limit * self.dt

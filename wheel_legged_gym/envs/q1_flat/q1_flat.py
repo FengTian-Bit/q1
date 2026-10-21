@@ -153,6 +153,9 @@ class Q1Flat(LeggedRobot):
         self.theta0 = torch.atan2(end_x, -end_z)
 
     def post_physics_step(self):
+        # Infos belong to one transition. Reusing the last reset's dictionary
+        # leaks timeout bootstrapping and repeats episode logs on later steps.
+        self.extras = {}
         # The inherited version hard-codes the wl robot's right-leg signs and
         # knee zero offset, so update Q1 kinematics explicitly here.
         self.gym.refresh_actor_root_state_tensor(self.sim)
@@ -170,6 +173,8 @@ class Q1Flat(LeggedRobot):
         self.check_termination()
         self.compute_reward()
         self.reset_idx(self.reset_buf.nonzero(as_tuple=False).flatten())
+        if self.cfg.env.send_timeouts:
+            self.extras["time_outs"] = self.time_out_buf.clone()
         self.compute_observations()
         self.last_actions[:, :, 1] = self.last_actions[:, :, 0]
         self.last_actions[:, :, 0] = self.actions

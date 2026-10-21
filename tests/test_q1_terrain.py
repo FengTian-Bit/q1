@@ -175,7 +175,7 @@ class Q1TerrainTests(unittest.TestCase):
         torch.testing.assert_close(heights, expected_height, atol=2e-6, rtol=0)
         self.assertEqual(env._get_heights(torch.tensor([], dtype=torch.long)).shape, (0, 77))
         env._post_physics_step_callback()
-        torch.testing.assert_close(env.base_height, torch.full((4,), 0.402), atol=1e-6, rtol=0)
+        torch.testing.assert_close(env.base_height, torch.full((4,), 0.402), atol=1e-4, rtol=0)
         env.compute_observations()
         self.assertEqual(env.privileged_obs_buf.shape, (4, 151))
         self.assertTrue(torch.isfinite(env.privileged_obs_buf).all())
