@@ -1,4 +1,4 @@
-"""Q1 flat rolling with explicit posture, support, parking and path quality."""
+"""Q1 balance, straight travel, in-place turns and moving turns on flat ground."""
 from wheel_legged_gym.envs.q1_flat.q1_flat_config import Q1FlatCfg, Q1FlatCfgPPO
 
 
@@ -13,9 +13,22 @@ class Q1Cfg(Q1FlatCfg):
         minimum_motion_speed = 0.15
         endpoint_probability = 0.5
         acceleration_limit = 0.4  # m/s^2; applies in train and play
+        yaw_acceleration_limit = 0.8  # rad/s^2; applies in train and play
+        minimum_turn_rate = 0.2
+        yaw_idle_threshold = 0.05
+        # Stand probability is separate; these split the remaining samples.
+        straight_probability = 1.0/3.0
+        in_place_probability = 1.0/3.0
         idle_threshold = 0.02
         parking_grace_s = 0.5
         parking_ramp_s = 0.5
+
+        class ranges(Q1FlatCfg.commands.ranges):
+            ang_vel_yaw = [-0.6, 0.6]
+
+    class asset(Q1FlatCfg.asset):
+        # Wheel collision center Y in the trunk frame, from Q1 URDF chains.
+        wheel_lateral_offsets = [0.14927, -0.14973]
 
     class control(Q1FlatCfg.control):
         damping = {"thigh_joint": 1.0, "calf_joint": 1.0, "foot_joint": 0.20}
@@ -44,7 +57,8 @@ class Q1Cfg(Q1FlatCfg):
 
         class scales(Q1FlatCfg.rewards.scales):
             tracking_lin_vel = 2.0
-            tracking_ang_vel = 0.4
+            tracking_ang_vel = 1.0
+            turning_yaw_tracking = 0.5
             base_height = 0.8
             orientation = -2.5
             actual_posture = -0.25
@@ -64,6 +78,15 @@ class Q1CfgPPO(Q1FlatCfgPPO):
 
     class runner(Q1FlatCfgPPO.runner):
         experiment_name = "q1"
-        run_name = "low_speed"
+        run_name = "turning"
         max_iterations = 30000
         save_interval = 500
+
+
+def configure_q1_stage(cfg, stage):
+    """Apply a stage explicitly, including when reusing a registry config."""
+    if stage not in ("balance", "low_speed", "turning"):
+        raise ValueError("Unknown Q1 stage: {}".format(stage))
+    cfg.commands.ranges.lin_vel_x = [0.0, 0.0] if stage == "balance" else [-0.3, 0.3]
+    cfg.commands.ranges.ang_vel_yaw = [-0.6, 0.6] if stage == "turning" else [0.0, 0.0]
+    cfg.commands.stand_probability = 1.0 if stage == "balance" else 0.25

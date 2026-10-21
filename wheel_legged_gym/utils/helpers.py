@@ -162,11 +162,20 @@ def update_cfg_from_args(env_cfg, cfg_train, args):
 def get_args():
     custom_parameters = [
         {
+            "name": "--play_mode", "type": str,
+            "choices": ["keyboard", "auto"], "default": "keyboard",
+            "help": "q1 playback: manual viewer controls or automatic evaluation.",
+        },
+        {
+            "name": "--play_duration", "type": float, "default": 0.0,
+            "help": "q1 playback duration in simulation seconds; 0 means unlimited keyboard / 72 s auto.",
+        },
+        {
             "name": "--q1_stage",
             "type": str,
-            "choices": ["balance", "low_speed"],
-            "default": "low_speed",
-            "help": "q1/q1_flat: zero-command balance or mixed balance/slow travel.",
+            "choices": ["balance", "low_speed", "turning"],
+            "default": None,
+            "help": "q1 defaults to turning; q1_flat defaults to low_speed. turning is q1-only.",
         },
         {
             "name": "--task",

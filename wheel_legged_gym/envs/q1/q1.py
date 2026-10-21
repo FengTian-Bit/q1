@@ -18,6 +18,7 @@ DIAGNOSTIC_FIELDS = [
     "parking_weight", "parking_active", "l_thigh", "l_calf", "r_thigh", "r_calf",
     "target_l_thigh", "target_l_calf", "target_r_thigh", "target_r_calf",
     "target_wheel_l", "target_wheel_r",
+    "target_yaw_rate", "applied_yaw_command", "next_yaw_command",
 ]
 
 
@@ -40,13 +41,14 @@ class Q1(Q1Flat):
         self.cross_track = torch.zeros(self.num_envs, device=self.device)
         self.heading_error = torch.zeros_like(self.cross_track)
         self.command_acceleration = torch.zeros_like(self.cross_track)
+        self.yaw_acceleration = torch.zeros_like(self.cross_track)
         self.parking_weight = torch.zeros_like(self.cross_track)
         self.wheel_clearance = torch.full((self.num_envs, 2), 0.00534, device=self.device)
         self.wheel_force = torch.zeros_like(self.wheel_clearance)
         self.wheel_duty = torch.zeros_like(self.wheel_clearance)
         self.wheel_slip = torch.zeros_like(self.wheel_clearance)
         self.wheel_saturation = torch.zeros_like(self.wheel_clearance)
-        self.metric_sum = torch.zeros(self.num_envs, 6, device=self.device)
+        self.metric_sum = torch.zeros(self.num_envs, 7, device=self.device)
         self.metric_steps = torch.zeros(self.num_envs, device=self.device)
         self.applied_commands = self.commands.clone()
         self.position_target = torch.zeros_like(self.dof_pos)
@@ -65,29 +67,42 @@ class Q1(Q1Flat):
         self.world_up[:, :, 2] = 1.0
         self.body_forward = torch.zeros(self.num_envs, 3, device=self.device)
         self.body_forward[:, 0] = 1.0
+        self.wheel_lateral_offsets = torch.tensor(self.cfg.asset.wheel_lateral_offsets, device=self.device)
 
     def _resample_commands(self, env_ids):
         if self.external_commands or len(env_ids) == 0:
             return
         maximum = max(abs(x) for x in self.cfg.commands.ranges.lin_vel_x)
         cfg = self.cfg.commands
+        yaw_max = max(abs(x) for x in cfg.ranges.ang_vel_yaw)
         minimum = min(cfg.minimum_motion_speed, maximum)
         magnitude = minimum + torch.rand(len(env_ids), device=self.device) * (maximum-minimum)
         endpoint = torch.rand(len(env_ids), device=self.device) < cfg.endpoint_probability
         magnitude = torch.where(endpoint, torch.full_like(magnitude, maximum), magnitude)
         sign = torch.where(torch.rand(len(env_ids), device=self.device) < 0.5, -1.0, 1.0)
         stand = torch.rand(len(env_ids), device=self.device) < cfg.stand_probability
-        if maximum == 0:
+        if maximum == 0 and yaw_max == 0:
             stand[:] = True
         self.command_targets[env_ids, 0] = torch.where(stand, torch.zeros_like(magnitude), magnitude * sign)
         self.command_targets[env_ids, 1] = 0.0
+        if yaw_max > 0:
+            mode = torch.rand(len(env_ids), device=self.device)
+            straight = mode < cfg.straight_probability
+            spin = (mode >= cfg.straight_probability) & (mode < cfg.straight_probability+cfg.in_place_probability)
+            yaw_min = min(cfg.minimum_turn_rate, yaw_max)
+            yaw = yaw_min + torch.rand(len(env_ids), device=self.device)*(yaw_max-yaw_min)
+            endpoint = torch.rand(len(env_ids), device=self.device) < cfg.endpoint_probability
+            yaw = torch.where(endpoint, torch.full_like(yaw, yaw_max), yaw)
+            yaw *= torch.where(torch.rand(len(env_ids), device=self.device) < 0.5, -1.0, 1.0)
+            self.command_targets[env_ids, 1] = torch.where(stand | straight, torch.zeros_like(yaw), yaw)
+            self.command_targets[env_ids[spin], 0] = 0.0
         self.command_targets[env_ids, 2] = cfg.ranges.height[0]
 
-    def set_command_target(self, speed):
-        """Playback target; actual command uses the same slew limiter as training."""
+    def set_command_target(self, speed, yaw_rate=0.0):
+        """Playback targets [vx, yaw rate]; both use the training slew limits."""
         self.external_commands = True
         self.command_targets[:, 0] = speed
-        self.command_targets[:, 1] = 0.0
+        self.command_targets[:, 1] = yaw_rate
         self.command_targets[:, 2] = self.cfg.commands.ranges.height[0]
 
     def _post_physics_step_callback(self):
@@ -97,7 +112,12 @@ class Q1(Q1Flat):
             self.cfg.commands.acceleration_limit * self.dt
         )
         self.commands[:, 0] += delta
-        self.commands[:, 1] = self.command_targets[:, 1]
+        yaw_delta = (self.command_targets[:, 1] - self.commands[:, 1]).clamp(
+            -self.cfg.commands.yaw_acceleration_limit*self.dt,
+            self.cfg.commands.yaw_acceleration_limit*self.dt
+        )
+        self.commands[:, 1] += yaw_delta
+        self.yaw_acceleration[:] = yaw_delta/self.dt
         self.commands[:, 2] = self.command_targets[:, 2]
         self.command_acceleration[:] = delta / self.dt
         self._update_references()
@@ -106,6 +126,7 @@ class Q1(Q1Flat):
             (self.dof_pos[:, self.leg_dof_indices] - self.default_dof_pos[:, self.leg_dof_indices]).abs().amax(1),
             self.wheel_duty.amin(1), self.wheel_slip.abs().mean(1),
             self.wheel_saturation.mean(1), self.parking_error_body.norm(dim=1),
+            (self.applied_commands[:, 1]-self.base_ang_vel[:, 2]).abs(),
         ), dim=1)
         self.metric_steps += 1
         self._record_diagnostics()
@@ -124,20 +145,24 @@ class Q1(Q1Flat):
             column(self.parking_error_body.norm(dim=1)), column(self.cross_track), column(self.heading_error),
             column(self.parking_weight), column(self.parking_active.float()), self.dof_pos[:, self.leg_dof_indices],
             self.position_target[:, self.leg_dof_indices], self.velocity_target[:, self.wheel_dof_indices],
+            self.command_targets[:, 1:2], self.applied_commands[:, 1:2], self.commands[:, 1:2],
         ), dim=1)
 
     def _update_references(self):
         cfg = self.cfg.commands
         q = self.base_quat
         yaw = torch.atan2(2*(q[:, 3]*q[:, 2]+q[:, 0]*q[:, 1]), 1-2*(q[:, 1].square()+q[:, 2].square()))
-        target_idle = (self.command_targets[:, 0].abs() < cfg.idle_threshold) & (self.command_targets[:, 1].abs() < cfg.idle_threshold)
-        idle = target_idle & (self.commands[:, 0].abs() < cfg.idle_threshold)
+        target_idle = (self.command_targets[:, 0].abs() < cfg.idle_threshold) & (self.command_targets[:, 1].abs() < cfg.yaw_idle_threshold)
+        idle = target_idle & (self.commands[:, 0].abs() < cfg.idle_threshold) & (self.commands[:, 1].abs() < cfg.yaw_idle_threshold)
         self.idle_elapsed[:] = torch.where(idle, self.idle_elapsed + self.dt, torch.zeros_like(self.idle_elapsed))
         parking = idle & (self.idle_elapsed >= cfg.parking_grace_s)
         entering = parking & ~self.parking_active
         self.parking_reference[entering] = self.root_states[entering, :2]
         self.heading_reference[entering] = yaw[entering]
-        moving = ~target_idle
+        # A fixed straight-line reference must not oppose requested turns.
+        # Include the ramp: re-anchor only after the yaw command settles to zero.
+        turning = (self.command_targets[:, 1].abs() >= cfg.yaw_idle_threshold) | (self.commands[:, 1].abs() >= cfg.yaw_idle_threshold)
+        moving = (~target_idle) & ~turning
         entering_motion = moving & ~self.path_active
         self.path_reference[entering_motion] = self.root_states[entering_motion, :2]
         self.heading_reference[entering_motion] = yaw[entering_motion]
@@ -171,7 +196,8 @@ class Q1(Q1Flat):
         position_ref[:, self.leg_dof_indices] = actions[:, [0, 1, 3, 4]] * self.cfg.control.pos_action_scale
         wheel_ref = actions[:, [2, 5]] * self.cfg.control.vel_action_scale
         if self.cfg.control.wheel_velocity_feedforward:
-            wheel_ref = wheel_ref + self.commands[:, 0:1] / self.cfg.asset.wheel_radius
+            wheel_ref = wheel_ref + (self.commands[:, 0:1]
+                                     - self.commands[:, 1:2]*self.wheel_lateral_offsets) / self.cfg.asset.wheel_radius
         limit = self.dof_vel_limits[self.wheel_dof_indices]
         velocity_ref[:, self.wheel_dof_indices] = torch.clip(wheel_ref, -limit, limit)
         self.position_target[:] = position_ref+self.default_dof_pos
@@ -250,7 +276,7 @@ class Q1(Q1Flat):
         valid = env_ids[self.metric_steps[env_ids] > 0]
         metrics = None if len(valid) == 0 else (self.metric_sum[valid] / self.metric_steps[valid, None]).mean(dim=0)
         for field in (self.command_targets, self.commands, self.idle_elapsed, self.parking_weight,
-                      self.parking_error_body, self.cross_track, self.heading_error, self.command_acceleration,
+                      self.parking_error_body, self.cross_track, self.heading_error, self.command_acceleration, self.yaw_acceleration,
                       self.parking_active, self.path_active, self.wheel_force, self.wheel_duty,
                       self.wheel_slip, self.wheel_saturation):
             field[env_ids] = 0
@@ -259,7 +285,7 @@ class Q1(Q1Flat):
         self.wheel_clearance[env_ids] = 0.00534
         super().reset_idx(env_ids)
         if metrics is not None:
-            for name, value in zip(("speed_mae", "worst_leg_error", "both_wheel_duty", "slip_speed", "wheel_saturation", "parking_drift"), metrics):
+            for name, value in zip(("speed_mae", "worst_leg_error", "both_wheel_duty", "slip_speed", "wheel_saturation", "parking_drift", "yaw_mae"), metrics):
                 self.extras["episode"]["q1_"+name] = value
         self.metric_sum[env_ids] = 0
         self.metric_steps[env_ids] = 0
@@ -277,19 +303,26 @@ class Q1(Q1Flat):
         tilt = self.projected_gravity[:, :2].norm(dim=1)
         recovery = (1.0-tilt/0.35).clamp(0.2, 1.0)
         acceleration = (self.command_acceleration.abs()/self.cfg.commands.acceleration_limit).clamp(0, 1)
+        acceleration = torch.maximum(acceleration, (self.yaw_acceleration.abs()/self.cfg.commands.yaw_acceleration_limit).clamp(0, 1))
         return recovery*(1.0-0.5*acceleration)
 
     def _reward_tracking_lin_vel(self):
         sigma = torch.where(self.parking_active,
                             torch.full_like(self.base_height, self.cfg.rewards.idle_tracking_sigma),
                             torch.full_like(self.base_height, self.cfg.rewards.tracking_sigma))
-        return torch.exp(-(self.commands[:, 0]-self.base_lin_vel[:, 0]).square()/sigma)
+        return torch.exp(-(self.applied_commands[:, 0]-self.base_lin_vel[:, 0]).square()/sigma)
 
     def _reward_tracking_ang_vel(self):
-        return torch.exp(-(self.commands[:, 1]-self.base_ang_vel[:, 2]).square()/self.cfg.rewards.yaw_tracking_sigma)
+        return torch.exp(-(self.applied_commands[:, 1]-self.base_ang_vel[:, 2]).square()/self.cfg.rewards.yaw_tracking_sigma)
+
+    def _reward_turning_yaw_tracking(self):
+        # Same principle as four-legged pure-turn tracking, with Q1 channel 1.
+        pure_turn = (self.applied_commands[:, 0].abs() < self.cfg.commands.idle_threshold)
+        pure_turn &= self.applied_commands[:, 1].abs() >= self.cfg.commands.yaw_idle_threshold
+        return pure_turn.float()*self._reward_tracking_ang_vel()
 
     def _reward_speed_error(self):
-        return ((self.commands[:, 0]-self.base_lin_vel[:, 0]).abs()-0.02).clamp_min(0).div(0.15).clamp(max=2)
+        return ((self.applied_commands[:, 0]-self.base_lin_vel[:, 0]).abs()-0.02).clamp_min(0).div(0.15).clamp(max=2)
 
     def _reward_actual_posture(self):
         error = (self.dof_pos[:, self.leg_dof_indices]-self.default_dof_pos[:, self.leg_dof_indices]).abs()
@@ -298,7 +331,8 @@ class Q1(Q1Flat):
 
     def _reward_leg_symmetry(self):
         pose = self.dof_pos[:, self.leg_dof_indices].reshape(self.num_envs, 2, 2)
-        return ((pose[:, 0]-pose[:, 1]).abs()-self.cfg.rewards.symmetry_allowance).clamp_min(0).div(0.2).square().mean(1).clamp(max=4)*self._quality_weight()
+        turning = (self.commands[:, 1].abs()/0.6).clamp(0, 1)
+        return ((pose[:, 0]-pose[:, 1]).abs()-self.cfg.rewards.symmetry_allowance).clamp_min(0).div(0.2).square().mean(1).clamp(max=4)*self._quality_weight()*(1.0-0.5*turning)
 
     def _reward_rolling_contact(self):
         clearance = ((self.wheel_clearance-self.cfg.rewards.clearance_allowance).clamp_min(0)/self.cfg.rewards.clearance_scale).square().clamp(max=4)

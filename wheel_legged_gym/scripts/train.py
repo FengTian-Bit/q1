@@ -41,7 +41,13 @@ import torch
 def train(args):
     if args.task in ("q1_flat", "q1"):
         env_cfg, q1_train_cfg = task_registry.get_cfgs(args.task)
-        if args.q1_stage == "balance":
+        args.q1_stage = args.q1_stage or ("turning" if args.task == "q1" else "low_speed")
+        if args.task == "q1":
+            from wheel_legged_gym.envs.q1.q1_config import configure_q1_stage
+            configure_q1_stage(env_cfg, args.q1_stage)
+        elif args.q1_stage == "turning":
+            raise ValueError("--q1_stage=turning requires --task=q1")
+        elif args.q1_stage == "balance":
             env_cfg.commands.ranges.lin_vel_x = [0.0, 0.0]
             env_cfg.commands.stand_probability = 1.0
         if args.run_name is None:

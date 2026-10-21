@@ -19,8 +19,10 @@ from torch import optim
 from test_q1_flat import NS, make_env, load_code
 
 
-def improved(count=8):
-    env = make_env(count, task_class=NS["Q1"], cfg_class=NS["Q1Cfg"])
+def improved(count=8, stage="low_speed"):
+    cfg = NS["Q1Cfg"]()
+    NS["configure_q1_stage"](cfg, stage)
+    env = make_env(count, task_class=NS["Q1"], cfg_class=lambda: cfg)
     env.contact_forces[:, env.feet_indices, 2] = 40.0
     return env
 
@@ -178,7 +180,7 @@ class Q1ImprovementTests(unittest.TestCase):
         config["policy"].update(actor_hidden_dims=[16, 8], critic_hidden_dims=[16, 8], encoder_hidden_dims=[16, 8])
         config["algorithm"].update(num_learning_epochs=1, num_mini_batches=2)
         def runner(folder):
-            env = improved()
+            env = improved(stage="turning")
             env.get_observations = lambda: (env.obs_buf, env.obs_history)
             env.get_privileged_observations = lambda: env.privileged_obs_buf
             env.reset = lambda: (env.obs_buf, env.privileged_obs_buf)
@@ -213,7 +215,7 @@ class Q1ImprovementTests(unittest.TestCase):
                              export_policy_as_jit=lambda *a: None,
                              range=lambda count: builtins.range(min(count, 4)))
             load_code("wheel_legged_gym/envs/q1/play_q1.py", namespace)
-            namespace["play_q1"](SimpleNamespace(num_envs=2, q1_stage="low_speed", load_run="test", checkpoint=2))
+            namespace["play_q1"](SimpleNamespace(num_envs=2, q1_stage="low_speed", load_run="test", checkpoint=2, play_mode="auto", play_duration=0.04, headless=True))
             output = Path(folder)/"logs/q1/exported/evaluations"
             with next(output.glob("*.csv")).open() as stream:
                 rows = list(csv.reader(stream))

@@ -163,6 +163,9 @@ class BaseTask:
                     sys.exit()
                 elif evt.action == "toggle_viewer_sync" and evt.value > 0:
                     self.enable_viewer_sync = not self.enable_viewer_sync
+                handler = getattr(self, "_extra_viewer_action_handler", None)
+                if handler is not None:
+                    handler(evt)
 
             # fetch results
             if self.device != "cpu":
