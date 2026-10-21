@@ -13,6 +13,7 @@ setup(
         "isaacgym",
         "matplotlib",
         "tensorboard",
+        "imageio-ffmpeg>=0.4.3,<0.6",
         "swanlab==0.7.20; python_version < '3.9'",
         "swanlab>=0.10.2,<0.11; python_version >= '3.9'",
         "setuptools==59.5.0",

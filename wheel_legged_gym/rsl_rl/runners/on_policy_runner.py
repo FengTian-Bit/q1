@@ -35,6 +35,7 @@ import statistics
 
 from torch.utils.tensorboard import SummaryWriter
 from wheel_legged_gym.rsl_rl.utils.swanlab_utils import SwanLabSummaryWriter
+from wheel_legged_gym.rsl_rl.utils.video import CheckpointVideoRecorder
 import torch
 
 from wheel_legged_gym.rsl_rl.algorithms import PPO
@@ -90,6 +91,7 @@ class OnPolicyRunner:
         self.swanlab_run_id = None
         self.loaded_swanlab_run_id = None
         self.loaded_checkpoint = None
+        self.training_video_recorder = None
 
         _, _ = self.env.reset()
 
@@ -99,7 +101,11 @@ class OnPolicyRunner:
         finally:
             if self.writer is not None:
                 writer, self.writer = self.writer, None
-                writer.close()
+                try:
+                    if hasattr(writer, "upload_videos"):
+                        writer.upload_videos(self.log_dir, max(self.current_learning_iteration-1, 0))
+                finally:
+                    writer.close()
 
     def _learn(self, num_learning_iterations, init_at_random_ep_len=False):
         # initialize writer
@@ -117,6 +123,13 @@ class OnPolicyRunner:
                 self.writer = SummaryWriter(log_dir=self.log_dir, flush_secs=10)
             else:
                 raise ValueError("Unknown logger: {}. Use swanlab or tensorboard.".format(logger))
+        video_cfg = self.cfg.get("periodic_video", {})
+        if self.log_dir is not None and video_cfg.get("enabled", False) and self.training_video_recorder is None:
+            self.training_video_recorder = CheckpointVideoRecorder(
+                sim_device=getattr(self.env, "sim_device", self.device), rl_device=self.device,
+                log_dir=self.log_dir, cfg=video_cfg)
+        if self.training_video_recorder is not None:
+            self.training_video_recorder.announce(self.current_learning_iteration)
         if init_at_random_ep_len:
             self.env.episode_length_buf = torch.randint_like(
                 self.env.episode_length_buf, high=int(self.env.max_episode_length)
@@ -199,8 +212,11 @@ class OnPolicyRunner:
             if self.log_dir is not None:
                 self.log(locals())
             self.current_learning_iteration = it + 1
-            if self.current_learning_iteration % self.save_interval == 0:
+            video_due = self.training_video_recorder is not None and self.training_video_recorder.should_record(self.current_learning_iteration)
+            if self.current_learning_iteration % self.save_interval == 0 or video_due:
                 self.save(os.path.join(self.log_dir, "model_{}.pt".format(self.current_learning_iteration)))
+            if self.writer is not None and hasattr(self.writer, "upload_videos"):
+                self.writer.upload_videos(self.log_dir, it)
             ep_infos.clear()
         self.current_learning_iteration = tot_iter
         self.save(
@@ -314,6 +330,8 @@ class OnPolicyRunner:
             },
             path,
         )
+        if self.training_video_recorder is not None:
+            self.training_video_recorder.on_checkpoint(path, self.current_learning_iteration)
 
     def load(self, path, load_optimizer=True):
         loaded_dict = torch.load(path)

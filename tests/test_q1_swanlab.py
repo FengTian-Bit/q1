@@ -88,7 +88,7 @@ class Q1SwanLabTests(unittest.TestCase):
     def make_runner(self, folder, logger="swanlab"):
         cfg = NS["Q1CfgPPO"]()
         train = NS["class_to_dict"](cfg)
-        train["runner"].update(num_steps_per_env=2, save_interval=1, logger=logger)
+        train["runner"].update(num_steps_per_env=2, save_interval=1, logger=logger, periodic_video={"enabled": False})
         train["policy"].update(actor_hidden_dims=[16, 8], critic_hidden_dims=[16, 8], encoder_hidden_dims=[16, 8])
         train["algorithm"].update(num_learning_epochs=1, num_mini_batches=2)
         env = improved(stage="turning")

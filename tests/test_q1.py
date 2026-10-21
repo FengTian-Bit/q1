@@ -176,7 +176,7 @@ class Q1ImprovementTests(unittest.TestCase):
             load_code("wheel_legged_gym/rsl_rl/"+path, namespace)
         train = NS["Q1CfgPPO"]()
         config = NS["class_to_dict"](train)
-        config["runner"].update(num_steps_per_env=2, save_interval=1, logger="tensorboard")
+        config["runner"].update(num_steps_per_env=2, save_interval=1, logger="tensorboard", periodic_video={"enabled": False})
         config["policy"].update(actor_hidden_dims=[16, 8], critic_hidden_dims=[16, 8], encoder_hidden_dims=[16, 8])
         config["algorithm"].update(num_learning_epochs=1, num_mini_batches=2)
         def runner(folder):

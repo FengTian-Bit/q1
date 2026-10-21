@@ -7,6 +7,7 @@ class Q1Cfg(Q1FlatCfg):
         num_envs = 4096
         num_observations = 31  # original 27 + parking XY, cross-track, heading
         num_privileged_obs = 151  # original layout + 4 actor + 4 wheel support
+        enable_camera_sensors = False  # enabled only by the recording child
 
     class terrain(Q1FlatCfg.terrain):
         # Reference: Dreamwaq-highplatform/legged_gym/envs/t0/t0/t0_config.py.
@@ -129,6 +130,22 @@ class Q1CfgPPO(Q1FlatCfgPPO):
         run_name = "turning"
         max_iterations = 30000
         save_interval = 500
+
+        class periodic_video:
+            enabled = True
+            interval = 1500
+            duration_s = 12.0
+            fps = 25
+            width = 1280
+            height = 720
+            timeout_s = 180.0
+            camera_offset = [1.5, 1.5, 0.8]
+            camera_target_offset = [0.0, 0.0, 0.1]
+            # Evaluation terrain, independent of the training curriculum.
+            terrain_type = "flat"
+            terrain_difficulty = 0.25
+            command_schedule = [(3.0, 0.0, 0.0), (3.0, 0.2, 0.0),
+                                (3.0, 0.0, 0.4), (3.0, -0.2, -0.3)]
 
 
 def configure_q1_stage(cfg, stage):

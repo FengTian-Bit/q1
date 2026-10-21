@@ -102,7 +102,7 @@ q1_speed_mae、q1_both_wheel_duty、q1_slip_speed、q1_wheel_saturation、q1_par
 环境与训练的完整解析配置会写入实验配置。每次新训练或续训创建独立 SwanLab 实验，
 续训时曲线横轴继续使用检查点累计轮数；配置中记录来源检查点、来源 SwanLab 实验 ID 和起始轮数。
 新检查点包含 swanlab_run_id，仍兼容不含该字段的旧 TensorBoard 检查点。
-播放只加载模型，不创建或上传 SwanLab 实验；本次不自动上传模型文件。
+播放只加载模型，不创建或上传 SwanLab 实验；模型文件仍只保存在本地。
 
 本地路径保留：模型和 resolved_config.json 在 `logs/q1/<运行目录>/`，
 SwanLab 数据在该目录的 `swanlog/`，TensorBoard 事件文件也在该运行目录内。
@@ -120,6 +120,34 @@ tensorboard --logdir=logs/q1
 
 `SWANLAB_MODE` 环境变量优先于模式参数；团队空间可通过 `SWANLAB_WORKSPACE` 或配置中的 swanlab_workspace 设置。
 原 wheel_legged、VMC 和 q1_flat 任务默认仍使用原日志方式，可显式传 `--logger=swanlab` 切换。
+
+## 训练视频和 GIF 上传
+
+默认启用 `Q1CfgPPO.runner.periodic_video`，沿用四轮足的独立检查点评估进程：
+每完成 1500 轮先保存模型，再运行一个单环境 headless 子进程录制 12 s，主训练等待这段录制结束后继续。
+录制期间不推进或修改主训练环境，不启用主训练进程的相机；主训练仍为 4096 个环境、30000 轮。
+录制轮次与 save_interval 独立，续训按累计轮数触发；30000 轮的片段只录制一次。
+
+MP4 为 1280×720、25 fps；SwanLab GIF 预览为最高宽 640 像素、10 fps，
+用 `swanlab.Video` 发布到当前实验的 `video` 媒体卡片，与相应模型的训练轮次关联。
+本地保留 `videos/training/iteration_001500.mp4`、`iteration_001500.swanlab.gif`、
+包含检查点/指令/帧数的同名 JSON 和子进程 `.render.log`，都位于当前运行目录下。
+TensorBoard 模式仍录制本地 MP4；SwanLab offline 模式只记录本地媒体，不进行云端上传。
+
+评估读取当前运行的 `resolved_config.json`，直接加载该轮策略，不启动新的 SwanLab 实验。
+默认只生成单块平地，按 3 s 停车、3 s 前进 0.2 m/s、3 s 原地左转 0.4 rad/s、
+3 s 后退 -0.2 m/s 并右转 -0.3 rad/s 的顺序展示。balance 阶段全程零指令，low_speed 阶段屏蔽转向；
+前后与转向仍使用训练时的指令变化限制。它是固定指令评估视频，不代表复杂地形训练通过率。
+
+可在 periodic_video 配置中改 `terrain_type="stairs_up"`、`terrain_difficulty=0.25` 来录制楼梯，
+或选择其他 Q1 地形类型；难度为 0–1，1 对应配置上限。视频地形设置不修改训练课程。
+通过 `enabled=False` 关闭录制；interval、duration_s、fps、width、height、相机偏移和 command_schedule 也可配置。
+给出 command_schedule 时，片长取各段 duration 的总和；Q1 每段格式为 `(秒数, vx, yaw_rate)`，没有侧移项。
+
+更新依赖时执行 `pip install -e .`，新增 imageio-ffmpeg 可在系统无 ffmpeg 时提供编码器。
+headless 录制仍需可用的 GPU 图形/Vulkan 支持；只有录制子进程开启相机。
+子进程失败或超过默认 180 s 超时会打印日志位置并继续训练；转换/上传失败会保留本地文件，
+等待 60 s 后在后续轮次重试。成功上传的片段不重复发送。
 
 ## 改进内容
 
@@ -243,6 +271,9 @@ python -m unittest discover -s tests -p 'test_q1*.py' -v
 实际施加指令的奖励时序、转向诊断、默认训练阶段和完整自动评估；真实 PPO 也以 turning 配置完成保存/续训测试。
 日志测试使用替身 SDK 验证参数、标量与本地备份一致、配置快照、旧检查点兼容、续训累计轮数和退出清理，
 并在真实 PPO 更新中检查训练/回合/质量指标及实验来源关联；没有使用账号进行在线上传验证。
+视频测试覆盖续训触发、非保存轮次补存模型、上传去重/失败重试、子进程超时继续训练、headless 相机开关、
+配置快照读取，以及真实 FFmpeg 的 RGB→MP4→GIF 编码与 GIF 帧数/时长。本机无 Isaac Gym，
+相机图像使用替身，没有执行真实机器人相机录制或真实 SwanLab 云端上传。
 新增测试检查地形生成 API 参数、地块分配、楼梯 20 cm 上限、解析坡面的高度/法向/滑移、
 正负地面高度下的轮子离地高度、课程升降级和重置后的高度刷新。
 地形 primitive 和 mesh 转换接口使用记录参数的桩，不等同于真实 Gym mesh/碰撞验证。

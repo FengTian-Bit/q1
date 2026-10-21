@@ -164,7 +164,7 @@ def update_cfg_from_args(env_cfg, cfg_train, args):
     return env_cfg, cfg_train
 
 
-def get_args():
+def get_args(extra_custom_parameters=None):
     custom_parameters = [
         {"name": "--logger", "type": str, "choices": ["swanlab", "tensorboard"], "default": None,
          "help": "Override training logger; q1 defaults to SwanLab."},
@@ -255,6 +255,7 @@ def get_args():
         },
         {"name": "--exptid", "type": str, "default": "", "help": "exptid"},
     ]
+    custom_parameters.extend(extra_custom_parameters or [])
     # parse arguments
     args = gymutil.parse_arguments(
         description="RL Policy", custom_parameters=custom_parameters
