@@ -46,8 +46,8 @@ def video_settings(cfg):
         duration, vx, yaw = map(float, entry)
         if not all(math.isfinite(v) for v in (duration, vx, yaw)) or duration <= 0:
             raise ValueError("Q1 video schedule values must be finite with positive durations")
-        if abs(vx) > 0.3+1e-6 or abs(yaw) > 0.6+1e-6:
-            raise ValueError("Q1 video targets must stay within +/-0.3 m/s and +/-0.6 rad/s")
+        if abs(vx) > 0.8+1e-6 or abs(yaw) > 0.6+1e-6:
+            raise ValueError("Q1 video targets must stay within +/-0.8 m/s and +/-0.6 rad/s")
         result["command_schedule"].append((duration, vx, yaw))
     result["duration_s"] = sum(entry[0] for entry in result["command_schedule"])
     return result

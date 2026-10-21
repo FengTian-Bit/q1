@@ -45,17 +45,20 @@ class Q1KeyboardTests(unittest.TestCase):
         keys.handle_event(event("q1_vx_plus", 0))
         self.assertAlmostEqual(keys.speed[0].item(), 0.2)
         keys.handle_event(event("q1_vx_plus"))
-        self.assertAlmostEqual(keys.speed[0].item(), 0.3)
-        keys.handle_event(event("q1_next"))
+        self.assertAlmostEqual(keys.speed[0].item(), 0.4)
         for _ in range(4):
+            keys.handle_event(event("q1_vx_plus"))
+        self.assertAlmostEqual(keys.speed[0].item(), 0.8)
+        keys.handle_event(event("q1_next"))
+        for _ in range(8):
             keys.handle_event(event("q1_vx_minus"))
         keys.apply()
-        torch.testing.assert_close(env.command_targets[:, 0], torch.tensor([0.3, -0.3, 0.0]))
+        torch.testing.assert_close(env.command_targets[:, 0], torch.tensor([0.8, -0.8, 0.0]))
         self.assertTrue((env.command_targets[:, 1] == 0).all())
         self.assertTrue((env.command_targets[:, 2] == env.cfg.commands.ranges.height[0]).all())
         keys.handle_event(event("q1_stop"))
         keys.apply()
-        torch.testing.assert_close(env.command_targets[:, 0], torch.tensor([0.3, 0.0, 0.0]))
+        torch.testing.assert_close(env.command_targets[:, 0], torch.tensor([0.8, 0.0, 0.0]))
         keys.close()
 
     def test_selection_bounds_wrapping_and_turning_commands(self):

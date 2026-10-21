@@ -47,7 +47,7 @@ class Q1ImprovementTests(unittest.TestCase):
         stationary = (target == 0).float().mean().item()
         self.assertTrue(0.20 < stationary < 0.30)
         moving = target[target != 0].abs()
-        self.assertTrue((moving >= 0.15).all() and (moving <= 0.3).all())
+        self.assertTrue((moving >= 0.15).all() and (moving <= 0.8).all())
         self.assertTrue((target > 0).any() and (target < 0).any())
         fraction = torch.exp(-target.square()/env.cfg.rewards.tracking_sigma).mean().item()
         self.assertLess(fraction, 0.35)  # stationary policy formerly got 78.5%

@@ -41,13 +41,15 @@ def play_q1(args):
     output = os.path.join(output, "evaluations")
     os.makedirs(output, exist_ok=True)
     stem = os.path.join(output, datetime.now().strftime("%Y%m%d_%H%M%S_%f"))
-    schedule = [(v, 0.0) for v in [0.0, 0.2, 0.0, -0.2, 0.0, 0.3, 0.0, -0.3, 0.0]]
+    maximum = cfg.commands.max_forward_speed
+    cruise = 0.5*maximum
+    schedule = [(v, 0.0) for v in [0.0, cruise, 0.0, -cruise, 0.0, maximum, 0.0, -maximum, 0.0]]
     if args.q1_stage == "balance":
         schedule = [(0.0, 0.0)]
     elif args.q1_stage == "turning":
-        schedule = [(0, 0), (0.2, 0), (0, 0), (0, 0.3), (0, 0.6), (0, 0),
-                    (0, -0.3), (0, -0.6), (0, 0), (0.2, 0.3), (0.2, -0.3), (0, 0),
-                    (-0.2, 0.3), (-0.2, -0.3), (0, 0), (0.3, 0.6), (-0.3, -0.6), (0, 0)]
+        schedule = [(0, 0), (cruise, 0), (0, 0), (0, 0.3), (0, 0.6), (0, 0),
+                    (0, -0.3), (0, -0.6), (0, 0), (cruise, 0.3), (cruise, -0.3), (0, 0),
+                    (-cruise, 0.3), (-cruise, -0.3), (0, 0), (maximum, 0.6), (-maximum, -0.6), (0, 0)]
     # Longer auto segments let a slow robot leave the central spawn platform.
     segment_s = 4.0 if cfg.terrain.mesh_type == "plane" else cfg.commands.rough_resampling_time
     if duration == 0 and mode == "auto":

@@ -37,7 +37,7 @@ class Q1TurningTests(unittest.TestCase):
                 self.assertTrue(((vx[arc]*sign_v > 0) & (yaw[arc]*sign_y > 0)).any())
         self.assertTrue((yaw[yaw != 0].abs() >= 0.2).all())
         self.assertTrue((yaw.abs() <= 0.6).all())
-        self.assertTrue((vx.abs() <= 0.3).all())
+        self.assertTrue((vx.abs() <= 0.8).all())
         untouched = env.command_targets[1:].clone()
         env._resample_commands(torch.tensor([0]))
         torch.testing.assert_close(env.command_targets[1:], untouched)

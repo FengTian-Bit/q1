@@ -50,6 +50,7 @@ class Q1Cfg(Q1FlatCfg):
         curriculum_tracking_error = 0.10
 
     class commands(Q1FlatCfg.commands):
+        max_forward_speed = 0.8  # shared training-stage and manual-control limit
         stand_probability = 0.25  # flat tiles only
         rough_resampling_time = 20.0
         minimum_motion_speed = 0.15
@@ -66,6 +67,7 @@ class Q1Cfg(Q1FlatCfg):
         parking_ramp_s = 0.5
 
         class ranges(Q1FlatCfg.commands.ranges):
+            lin_vel_x = [-0.8, 0.8]
             ang_vel_yaw = [-0.6, 0.6]
 
     class asset(Q1FlatCfg.asset):
@@ -85,6 +87,8 @@ class Q1Cfg(Q1FlatCfg):
         pose_allowance = 0.08
         pose_error_scale = 0.20
         symmetry_allowance = 0.08
+        rough_leg_symmetry_weight = 1.0  # restore soft symmetry on all terrain
+        speed_error_scale = 0.15  # m/s, keep the existing absolute accuracy cost
         support_force = 5.0  # contact threshold, not a fixed equal-load target
         clearance_allowance = 0.015
         clearance_scale = 0.03
@@ -144,14 +148,15 @@ class Q1CfgPPO(Q1FlatCfgPPO):
             # Evaluation terrain, independent of the training curriculum.
             terrain_type = "flat"
             terrain_difficulty = 0.25
-            command_schedule = [(3.0, 0.0, 0.0), (3.0, 0.2, 0.0),
-                                (3.0, 0.0, 0.4), (3.0, -0.2, -0.3)]
+            command_schedule = [(3.0, 0.0, 0.0), (3.0, 0.8, 0.0),
+                                (3.0, 0.0, 0.4), (3.0, -0.8, -0.3)]
 
 
 def configure_q1_stage(cfg, stage):
     """Apply a stage explicitly, including when reusing a registry config."""
     if stage not in ("balance", "low_speed", "turning"):
         raise ValueError("Unknown Q1 stage: {}".format(stage))
-    cfg.commands.ranges.lin_vel_x = [0.0, 0.0] if stage == "balance" else [-0.3, 0.3]
+    maximum = cfg.commands.max_forward_speed
+    cfg.commands.ranges.lin_vel_x = [0.0, 0.0] if stage == "balance" else [-maximum, maximum]
     cfg.commands.ranges.ang_vel_yaw = [-0.6, 0.6] if stage == "turning" else [0.0, 0.0]
     cfg.commands.stand_probability = 1.0 if stage == "balance" else 0.25

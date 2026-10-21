@@ -13,6 +13,7 @@ class Q1Keyboard:
     def __init__(self, env):
         self.env = env
         self.speed = torch.zeros(env.num_envs, device=env.device)
+        self.max_forward_speed = float(env.cfg.commands.max_forward_speed)
         self.yaw_rate = torch.zeros_like(self.speed)
         self.selected = 0
         self.paused = False
@@ -35,7 +36,7 @@ class Q1Keyboard:
         # render, so one viewer event queue controls commands and pause.
         self.env.render = lambda *args, **kwargs: None
         self.enabled = True
-        print("Click the viewer to focus. W/S: vx +/-0.2 m/s (held after release, limited to +/-0.3); "
+        print("Click the viewer to focus. W/S: vx +/-0.2 m/s (held after release, limited to +/-{}); ".format(self.max_forward_speed)+
               "A/D: yaw +/-0.2 rad/s (limited to +/-0.6); "
               "X: stop translation and turning targets; Space: pause/resume; R: reset selected robot; "
               "F: free/follow camera; 0-8 or [/]: select robot; Esc: exit; V: viewer sync.")
@@ -49,7 +50,7 @@ class Q1Keyboard:
         action = event.action
         if action in ("q1_vx_plus", "q1_vx_minus"):
             delta = 0.2 if action == "q1_vx_plus" else -0.2
-            self.speed[self.selected] = (self.speed[self.selected]+delta).clamp(-0.3, 0.3)
+            self.speed[self.selected] = (self.speed[self.selected]+delta).clamp(-self.max_forward_speed, self.max_forward_speed)
         elif action in ("q1_yaw_plus", "q1_yaw_minus"):
             delta = 0.2 if action == "q1_yaw_plus" else -0.2
             self.yaw_rate[self.selected] = (self.yaw_rate[self.selected]+delta).clamp(-0.6, 0.6)

@@ -354,7 +354,8 @@ class Q1(Q1Flat):
     def set_command_target(self, speed, yaw_rate=0.0):
         """Playback targets [vx, yaw rate]; both use the training slew limits."""
         self.external_commands = True
-        self.command_targets[:, 0] = speed
+        maximum = self.cfg.commands.max_forward_speed
+        self.command_targets[:, 0] = torch.as_tensor(speed, device=self.device).clamp(-maximum, maximum)
         self.command_targets[:, 1] = yaw_rate
         self.command_targets[:, 2] = self.cfg.commands.ranges.height[0]
 
@@ -596,7 +597,11 @@ class Q1(Q1Flat):
         return torch.exp(-(self.base_height - self.commands[:, 2]).square() / sigma)
 
     def _reward_speed_error(self):
-        return ((self.applied_commands[:, 0]-self.base_lin_vel[:, 0]).abs()-0.02).clamp_min(0).div(0.15).clamp(max=2)
+        scale = self.cfg.rewards.speed_error_scale
+        # Cover the full forward/reverse error range instead of saturating at
+        # 0.32 m/s, which hid improvement toward the new 0.8 m/s commands.
+        maximum_cost = 2.0*self.cfg.commands.max_forward_speed/scale
+        return ((self.applied_commands[:, 0]-self.base_lin_vel[:, 0]).abs()-0.02).clamp_min(0).div(scale).clamp(max=maximum_cost)
 
     def _reward_actual_posture(self):
         error = (self.dof_pos[:, self.leg_dof_indices]-self.default_dof_pos[:, self.leg_dof_indices]).abs()
@@ -606,7 +611,8 @@ class Q1(Q1Flat):
     def _reward_leg_symmetry(self):
         pose = self.dof_pos[:, self.leg_dof_indices].reshape(self.num_envs, 2, 2)
         turning = (self.commands[:, 1].abs()/0.6).clamp(0, 1)
-        return ((pose[:, 0]-pose[:, 1]).abs()-self.cfg.rewards.symmetry_allowance).clamp_min(0).div(0.2).square().mean(1).clamp(max=4)*self._quality_weight()*(1.0-0.5*turning)*self._flat_terrain_mask()
+        terrain_weight = torch.where(self._flat_terrain_mask(), 1.0, self.cfg.rewards.rough_leg_symmetry_weight)
+        return ((pose[:, 0]-pose[:, 1]).abs()-self.cfg.rewards.symmetry_allowance).clamp_min(0).div(0.2).square().mean(1).clamp(max=4)*self._quality_weight()*(1.0-0.5*turning)*terrain_weight
 
     def _reward_nominal_state(self):
         return super()._reward_nominal_state()*self._flat_terrain_mask()

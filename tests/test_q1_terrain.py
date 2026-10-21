@@ -225,11 +225,12 @@ class Q1TerrainTests(unittest.TestCase):
         env.dof_pos[:, env.leg_dof_indices[0]] += 0.35
         env.dof_vel[:, env.leg_dof_indices[0]] = 1.0
         env._update_leg_kinematics()
-        for method in (env._reward_actual_posture, env._reward_leg_symmetry,
+        for method in (env._reward_actual_posture,
                        env._reward_rolling_leg_motion, env._reward_nominal_state):
             cost = method()
             self.assertGreater(cost[0], 0)
             self.assertEqual(cost[1:].sum(), 0)
+        self.assertTrue((env._reward_leg_symmetry() > 0).all())
         env.episode_length_buf[:] = 100
         env.wheel_duty[:] = torch.tensor([1., 0.])
         self.assertGreater(env._reward_rolling_contact()[0], 0)
@@ -325,7 +326,7 @@ class Q1TerrainTests(unittest.TestCase):
             self.assertEqual(summary["terrain_mesh"], "heightfield")
             with next(output.glob("*.csv")).open() as stream:
                 rows = list(csv.reader(stream))[1:][::40]
-            np.testing.assert_allclose([float(row[3]) for row in rows], [0.0, 0.2, 0.0, -0.2], atol=1e-7)
+            np.testing.assert_allclose([float(row[3]) for row in rows], [0.0, 0.4, 0.0, -0.4], atol=1e-7)
 
 
 if __name__ == "__main__":
