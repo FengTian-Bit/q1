@@ -1,0 +1,484 @@
+{
+  "status": "passed_static_checks",
+  "errors": [],
+  "warnings": [],
+  "link_count": 9,
+  "joint_count": 8,
+  "active_joint_count": 6,
+  "fixed_joint_count": 2,
+  "total_mass_kg": 6.870310590000002,
+  "initial_base_z_m": 0.402,
+  "initial_total_com_m": [
+    -0.025759634818611647,
+    -9.573885945703324e-05,
+    0.30308061016573123
+  ],
+  "joints": [
+    {
+      "name": "L_thigh_joint",
+      "axis": "+Y",
+      "initial_rad": 0.6,
+      "lower": -1.57,
+      "upper": 1.57,
+      "effort": 14.0,
+      "velocity": 10.0
+    },
+    {
+      "name": "L_calf_joint",
+      "axis": "+Y",
+      "initial_rad": -1.2,
+      "lower": -2.6,
+      "upper": 0.0,
+      "effort": 14.0,
+      "velocity": 10.0
+    },
+    {
+      "name": "L_foot_joint",
+      "axis": "+Y",
+      "initial_rad": 0.0,
+      "lower": -99999.0,
+      "upper": 99999.0,
+      "effort": 0.8,
+      "velocity": 18.0
+    },
+    {
+      "name": "R_thigh_joint",
+      "axis": "+Y",
+      "initial_rad": 0.6,
+      "lower": -1.57,
+      "upper": 1.57,
+      "effort": 14.0,
+      "velocity": 10.0
+    },
+    {
+      "name": "R_calf_joint",
+      "axis": "+Y",
+      "initial_rad": -1.2,
+      "lower": -2.6,
+      "upper": 0.0,
+      "effort": 14.0,
+      "velocity": 10.0
+    },
+    {
+      "name": "R_foot_joint",
+      "axis": "+Y",
+      "initial_rad": 0.0,
+      "lower": -99999.0,
+      "upper": 99999.0,
+      "effort": 0.8,
+      "velocity": 18.0
+    }
+  ],
+  "inertias": [
+    {
+      "link": "trunk",
+      "mass_kg": 4.13466807,
+      "principal_kg_m2": [
+        0.019983508289686865,
+        0.02966935374874666,
+        0.04148464762204651
+      ],
+      "gyration_radius_m": [
+        0.0695209250730572,
+        0.08470981206604504,
+        0.10016670264484422
+      ],
+      "mesh_radius_about_com_m": 0.19686856801947297
+    },
+    {
+      "link": "L_thigh",
+      "mass_kg": 0.50548572,
+      "principal_kg_m2": [
+        0.00028600149797573565,
+        0.00205835980273879,
+        0.0021894674372554736
+      ],
+      "gyration_radius_m": [
+        0.023786454246200357,
+        0.06381256479220107,
+        0.06581347154092626
+      ],
+      "mesh_radius_about_com_m": 0.2000600349938547
+    },
+    {
+      "link": "L_calf",
+      "mass_kg": 0.10185666,
+      "principal_kg_m2": [
+        4.108804508608289e-05,
+        0.0006667867239860703,
+        0.0007017116780578465
+      ],
+      "gyration_radius_m": [
+        0.020084592458567405,
+        0.08090935827165201,
+        0.08300125070389291
+      ],
+      "mesh_radius_about_com_m": 0.15123835850263156
+    },
+    {
+      "link": "L_footmotor",
+      "mass_kg": 0.36,
+      "principal_kg_m2": [
+        0.0001353402168138804,
+        0.00013534090494823377,
+        0.00020055454102788585
+      ],
+      "gyration_radius_m": [
+        0.01938930237799244,
+        0.019389351670170363,
+        0.02360288006366348
+      ],
+      "mesh_radius_about_com_m": 0.03782739099956803
+    },
+    {
+      "link": "L_foot",
+      "mass_kg": 0.4,
+      "principal_kg_m2": [
+        0.000664108479921033,
+        0.0006641781764487825,
+        0.001274136038980185
+      ],
+      "gyration_radius_m": [
+        0.04074642560768468,
+        0.04074856366943449,
+        0.056438817293157924
+      ],
+      "mesh_radius_about_com_m": 0.0751183971150283
+    },
+    {
+      "link": "R_thigh",
+      "mass_kg": 0.5023441,
+      "principal_kg_m2": [
+        0.0002855543809311809,
+        0.002078169687505018,
+        0.0022109218256038
+      ],
+      "gyration_radius_m": [
+        0.02384205913329523,
+        0.06431908388311666,
+        0.06634161513680006
+      ],
+      "mesh_radius_about_com_m": 0.20126758254765628
+    },
+    {
+      "link": "R_calf",
+      "mass_kg": 0.10595604,
+      "principal_kg_m2": [
+        4.2051427179245225e-05,
+        0.0007290773381995182,
+        0.0007646732230612368
+      ],
+      "gyration_radius_m": [
+        0.019921751139123117,
+        0.08295144205863733,
+        0.08495228836316716
+      ],
+      "mesh_radius_about_com_m": 0.14640477758351372
+    },
+    {
+      "link": "R_footmotor",
+      "mass_kg": 0.36,
+      "principal_kg_m2": [
+        0.0001353402168185038,
+        0.00013534090494362355,
+        0.0002005545410278725
+      ],
+      "gyration_radius_m": [
+        0.019389302378323623,
+        0.019389351669840127,
+        0.023602880063662693
+      ],
+      "mesh_radius_about_com_m": 0.037787741970159806
+    },
+    {
+      "link": "R_foot",
+      "mass_kg": 0.4,
+      "principal_kg_m2": [
+        0.0006641084799230603,
+        0.0006641781764567549,
+        0.0012741360389801845
+      ],
+      "gyration_radius_m": [
+        0.04074642560774688,
+        0.04074856366967905,
+        0.05643881729315792
+      ],
+      "mesh_radius_about_com_m": 0.07512356743615276
+    }
+  ],
+  "symmetry": [
+    {
+      "pair": "thigh",
+      "mass_relative_difference": -0.006215051930646165,
+      "principal_relative_difference": [
+        -0.001563338121371327,
+        0.009624111751439068,
+        0.009798907251719502
+      ]
+    },
+    {
+      "pair": "calf",
+      "mass_relative_difference": 0.040246558251566464,
+      "principal_relative_difference": [
+        0.023446773657495035,
+        0.09341909785046831,
+        0.08972566222305334
+      ]
+    },
+    {
+      "pair": "footmotor",
+      "mass_relative_difference": 0.0,
+      "principal_relative_difference": [
+        3.416134042311114e-11,
+        -3.406375181924659e-11,
+        -6.661338147750939e-14
+      ]
+    },
+    {
+      "pair": "foot",
+      "mass_relative_difference": 0.0,
+      "principal_relative_difference": [
+        3.0526692285093304e-12,
+        1.2003287253037342e-11,
+        -3.3306690738754696e-16
+      ]
+    }
+  ],
+  "collisions": [
+    {
+      "link": "trunk",
+      "name": "trunk_box",
+      "shape": "box",
+      "dimensions_m": [
+        0.280343,
+        0.220002,
+        0.154902
+      ],
+      "initial_bottom_m": 0.32793510000000003
+    },
+    {
+      "link": "L_thigh",
+      "name": "L_thigh_box",
+      "shape": "box",
+      "dimensions_m": [
+        0.035,
+        0.015,
+        0.2245
+      ],
+      "initial_bottom_m": 0.23548773373365123
+    },
+    {
+      "link": "L_thigh",
+      "name": "L_thigh_knee_motor",
+      "shape": "cylinder",
+      "dimensions_m": [
+        0.04299,
+        0.032
+      ],
+      "initial_bottom_m": 0.20237897701806434
+    },
+    {
+      "link": "L_calf",
+      "name": "L_calf_upper_box",
+      "shape": "box",
+      "dimensions_m": [
+        0.03,
+        0.008,
+        0.09597967
+      ],
+      "initial_bottom_m": 0.1645379745661682
+    },
+    {
+      "link": "L_calf",
+      "name": "L_calf_lower_box",
+      "shape": "box",
+      "dimensions_m": [
+        0.03029,
+        0.01875,
+        0.1
+      ],
+      "initial_bottom_m": 0.07990203070071766
+    },
+    {
+      "link": "L_footmotor",
+      "name": "L_footmotor_housing",
+      "shape": "cylinder",
+      "dimensions_m": [
+        0.03394,
+        0.04
+      ],
+      "initial_bottom_m": 0.046361854036128664
+    },
+    {
+      "link": "L_foot",
+      "name": "L_wheel",
+      "shape": "cylinder",
+      "dimensions_m": [
+        0.07496,
+        0.02999
+      ],
+      "initial_bottom_m": 0.005341854036128663
+    },
+    {
+      "link": "R_thigh",
+      "name": "R_thigh_box",
+      "shape": "box",
+      "dimensions_m": [
+        0.035,
+        0.015,
+        0.2245
+      ],
+      "initial_bottom_m": 0.23548773373365123
+    },
+    {
+      "link": "R_thigh",
+      "name": "R_thigh_knee_motor",
+      "shape": "cylinder",
+      "dimensions_m": [
+        0.04299,
+        0.032
+      ],
+      "initial_bottom_m": 0.20237897701806434
+    },
+    {
+      "link": "R_calf",
+      "name": "R_calf_upper_box",
+      "shape": "box",
+      "dimensions_m": [
+        0.03,
+        0.008,
+        0.09597967
+      ],
+      "initial_bottom_m": 0.1645379745661682
+    },
+    {
+      "link": "R_calf",
+      "name": "R_calf_lower_box",
+      "shape": "box",
+      "dimensions_m": [
+        0.03029,
+        0.01875,
+        0.1
+      ],
+      "initial_bottom_m": 0.07990203070071766
+    },
+    {
+      "link": "R_footmotor",
+      "name": "R_footmotor_housing",
+      "shape": "cylinder",
+      "dimensions_m": [
+        0.03394,
+        0.04
+      ],
+      "initial_bottom_m": 0.046361854036128664
+    },
+    {
+      "link": "R_foot",
+      "name": "R_wheel",
+      "shape": "cylinder",
+      "dimensions_m": [
+        0.07496,
+        0.02999
+      ],
+      "initial_bottom_m": 0.005341854036128663
+    }
+  ],
+  "meshes": [
+    {
+      "link": "trunk",
+      "file": "../meshes/trunk.STL",
+      "sha256": "4487857143b065f1edacf9f7b037866aec295c57c572d02b512da5572faa630e",
+      "dimensions_m": [
+        0.28034084290266037,
+        0.2199999988079071,
+        0.15489999949932098
+      ]
+    },
+    {
+      "link": "L_thigh",
+      "file": "../meshes/L_thigh.STL",
+      "sha256": "fc6203e6efef437cfc56a2e727d08deddaa2b1c3f0b92db062811ca96336fb6e",
+      "dimensions_m": [
+        0.08599856495857239,
+        0.04450000077486038,
+        0.2675000000745058
+      ]
+    },
+    {
+      "link": "L_calf",
+      "file": "../meshes/L_calf.STL",
+      "sha256": "bae9bf10e2571057245324c9f2726ec6eb6a3e7800d43b96e1e95b8b3917c695",
+      "dimensions_m": [
+        0.0798344649374485,
+        0.0289999982342124,
+        0.2659219540655613
+      ]
+    },
+    {
+      "link": "L_footmotor",
+      "file": "../meshes/L_footmotor.STL",
+      "sha256": "71521e0a68ddfee59025265d3743b3cbdc4b18739d9e0190b53a0978baae3d4e",
+      "dimensions_m": [
+        0.0678982362151146,
+        0.044500000718981025,
+        0.06793659925460815
+      ]
+    },
+    {
+      "link": "L_foot",
+      "file": "../meshes/L_foot.STL",
+      "sha256": "a93b604335ddf1bb7c1501dc39c16d5d5f6b04c8335ce59579abd19c92b56470",
+      "dimensions_m": [
+        0.14998891204595566,
+        0.02999999865889552,
+        0.14996890723705292
+      ]
+    },
+    {
+      "link": "R_thigh",
+      "file": "../meshes/R_thigh.STL",
+      "sha256": "596bd5be26d50d1c95930829a676b321877a5748181a4759bb5870e845364f43",
+      "dimensions_m": [
+        0.08599856495857239,
+        0.04450000077486038,
+        0.2675000000745058
+      ]
+    },
+    {
+      "link": "R_calf",
+      "file": "../meshes/R_calf.STL",
+      "sha256": "a440458a944e2634cfc3425585a82b93f196048816ae8562adb6e01eaa14d705",
+      "dimensions_m": [
+        0.0798344649374485,
+        0.029000001028180122,
+        0.2659219540655613
+      ]
+    },
+    {
+      "link": "R_footmotor",
+      "file": "../meshes/R_footmotor.STL",
+      "sha256": "f02c0e7a452011d2e6eb024bb689ec2114d98dbb1f898f41ef5479cca7be6d7f",
+      "dimensions_m": [
+        0.0679340548813343,
+        0.044500000718981025,
+        0.06790666282176971
+      ]
+    },
+    {
+      "link": "R_foot",
+      "file": "../meshes/R_foot.STL",
+      "sha256": "eee185a62ef8be3f3cbbb4d33438c1499145d4df5e1e270155fe92a75b8dd5e4",
+      "dimensions_m": [
+        0.14996636658906937,
+        0.02999999865889552,
+        0.14993944764137268
+      ]
+    }
+  ],
+  "limitations": [
+    "Static primitive ground clearance only; no Isaac Gym import, contact simulation or viewer check.",
+    "Inertia small/large screening uses mesh dimensions, radius bounds and left/right principal comparisons; CAD mass distribution is unavailable, so a universal lower inertia bound cannot be certified.",
+    "No previous URDF version was supplied for a numerical inertia diff.",
+    "Full-range collision separation is not certified; see q1_collision_clearance.json."
+  ]
+}

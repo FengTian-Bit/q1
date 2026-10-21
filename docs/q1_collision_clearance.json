@@ -1,0 +1,1762 @@
+{
+  "generated_at": "2026-10-21T14:23:10.313998+08:00",
+  "urdf": "resources/robots/q1/urdf/q1.urdf",
+  "output": "docs/q1_collision_clearance.json",
+  "not_dynamic_simulation": true,
+  "purpose": "Continuous geometric separation certificate for every collision-primitive pair",
+  "numeric_guard_m": 1e-09,
+  "proof_premises": [
+    "A connected rooted URDF tree",
+    "Every joint origin rpy is exactly zero",
+    "Every active joint axis is exactly positive or negative Y",
+    "All collision primitives are finite positive boxes or cylinders",
+    "Same-link composite shapes and same-side calf/footmotor interfaces are explicit permitted overlaps; all thigh/calf pairs and calf/wheel pairs require geometric separation certification",
+    "After coaxial circular-wheel symmetry elimination, every unresolved Y-projection pair has at most one relative bounded revolute joint"
+  ],
+  "pairs": [
+    {
+      "first": "trunk/trunk_box",
+      "second": "L_thigh/L_thigh_box",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.0019964990000000122,
+      "raw_y_gap_m": 0.001996500000000012,
+      "first_y_interval_m": [
+        -0.11072850000000001,
+        0.1092735
+      ],
+      "second_y_interval_m": [
+        0.11127000000000001,
+        0.12627
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "trunk/trunk_box",
+      "second": "L_thigh/L_thigh_knee_motor",
+      "common_ancestor": "trunk",
+      "eliminated_continuous_joint_symmetries": [],
+      "symmetry_guard_m": 0.0,
+      "method": "continuous_angular_lipschitz_support_projections",
+      "certified": false,
+      "conservative_gap_m": -5.000025294888598e-05,
+      "relative_joint": "L_thigh_joint",
+      "relative_joint_range_rad": [
+        -1.57,
+        1.57
+      ],
+      "moving_collision": "L_thigh/L_thigh_knee_motor",
+      "point_speed_bound_m_per_rad": 0.24299,
+      "speed_bound_reason": "maximum cylinder-axis endpoint radius plus cylinder radius (conservative)",
+      "closed_cover_panel_count": 7630,
+      "panel_width_rad": 0.00041153342070773265,
+      "maximum_midpoint_to_panel_bound_m": 4.999925294888598e-05,
+      "worst_panel_midpoint_rad": -1.157437745740498,
+      "worst_panel_projection_lower_m": 0.0,
+      "inequality": "gap(q) >= support_projection_lower(midpoint) - speed_bound * panel_width / 2 - symmetry_guard - numeric_guard",
+      "domain": "closed panels cover the entire relative-joint interval; all upstream angles cancel"
+    },
+    {
+      "first": "trunk/trunk_box",
+      "second": "L_calf/L_calf_upper_box",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.022996499000000004,
+      "raw_y_gap_m": 0.022996500000000003,
+      "first_y_interval_m": [
+        -0.11072850000000001,
+        0.1092735
+      ],
+      "second_y_interval_m": [
+        0.13227,
+        0.14027
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "trunk/trunk_box",
+      "second": "L_calf/L_calf_lower_box",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.0019964989999999984,
+      "raw_y_gap_m": 0.0019964999999999983,
+      "first_y_interval_m": [
+        -0.11072850000000001,
+        0.1092735
+      ],
+      "second_y_interval_m": [
+        0.11127,
+        0.13002
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "trunk/trunk_box",
+      "second": "L_footmotor/L_footmotor_housing",
+      "method": "unsupported",
+      "certified": false,
+      "conservative_gap_m": null,
+      "explanation": "trunk/trunk_box / L_footmotor/L_footmotor_housing: more than one relative active joint remains after symmetry elimination"
+    },
+    {
+      "first": "trunk/trunk_box",
+      "second": "L_foot/L_wheel",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.025001498999999927,
+      "raw_y_gap_m": 0.025001499999999927,
+      "first_y_interval_m": [
+        -0.11072850000000001,
+        0.1092735
+      ],
+      "second_y_interval_m": [
+        0.13427499999999992,
+        0.164265
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "trunk/trunk_box",
+      "second": "R_thigh/R_thigh_box",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.0020014989999999895,
+      "raw_y_gap_m": 0.0020014999999999894,
+      "first_y_interval_m": [
+        -0.11072850000000001,
+        0.1092735
+      ],
+      "second_y_interval_m": [
+        -0.12772999999999998,
+        -0.11273
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "trunk/trunk_box",
+      "second": "R_thigh/R_thigh_knee_motor",
+      "common_ancestor": "trunk",
+      "eliminated_continuous_joint_symmetries": [],
+      "symmetry_guard_m": 0.0,
+      "method": "continuous_angular_lipschitz_support_projections",
+      "certified": false,
+      "conservative_gap_m": -5.000025294888598e-05,
+      "relative_joint": "R_thigh_joint",
+      "relative_joint_range_rad": [
+        -1.57,
+        1.57
+      ],
+      "moving_collision": "R_thigh/R_thigh_knee_motor",
+      "point_speed_bound_m_per_rad": 0.24299,
+      "speed_bound_reason": "maximum cylinder-axis endpoint radius plus cylinder radius (conservative)",
+      "closed_cover_panel_count": 7630,
+      "panel_width_rad": 0.00041153342070773265,
+      "maximum_midpoint_to_panel_bound_m": 4.999925294888598e-05,
+      "worst_panel_midpoint_rad": -1.157437745740498,
+      "worst_panel_projection_lower_m": 0.0,
+      "inequality": "gap(q) >= support_projection_lower(midpoint) - speed_bound * panel_width / 2 - symmetry_guard - numeric_guard",
+      "domain": "closed panels cover the entire relative-joint interval; all upstream angles cancel"
+    },
+    {
+      "first": "trunk/trunk_box",
+      "second": "R_calf/R_calf_upper_box",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.02200149899999998,
+      "raw_y_gap_m": 0.02200149999999998,
+      "first_y_interval_m": [
+        -0.11072850000000001,
+        0.1092735
+      ],
+      "second_y_interval_m": [
+        -0.14073,
+        -0.13273
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "trunk/trunk_box",
+      "second": "R_calf/R_calf_lower_box",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.0010014989999999747,
+      "raw_y_gap_m": 0.0010014999999999746,
+      "first_y_interval_m": [
+        -0.11072850000000001,
+        0.1092735
+      ],
+      "second_y_interval_m": [
+        -0.13047999999999998,
+        -0.11172999999999998
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "trunk/trunk_box",
+      "second": "R_footmotor/R_footmotor_housing",
+      "method": "unsupported",
+      "certified": false,
+      "conservative_gap_m": null,
+      "explanation": "trunk/trunk_box / R_footmotor/R_footmotor_housing: more than one relative active joint remains after symmetry elimination"
+    },
+    {
+      "first": "trunk/trunk_box",
+      "second": "R_foot/R_wheel",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.02400649899999993,
+      "raw_y_gap_m": 0.02400649999999993,
+      "first_y_interval_m": [
+        -0.11072850000000001,
+        0.1092735
+      ],
+      "second_y_interval_m": [
+        -0.164725,
+        -0.13473499999999994
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_thigh/L_thigh_box",
+      "second": "L_thigh/L_thigh_knee_motor",
+      "method": "permitted_reference_overlap",
+      "certified": true,
+      "permitted_overlap": true,
+      "conservative_gap_m": null,
+      "domain": "same-link composite collision primitives"
+    },
+    {
+      "first": "L_thigh/L_thigh_box",
+      "second": "L_calf/L_calf_upper_box",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.005999999000000005,
+      "raw_y_gap_m": 0.006000000000000005,
+      "first_y_interval_m": [
+        0.11127000000000001,
+        0.12627
+      ],
+      "second_y_interval_m": [
+        0.13227,
+        0.14027
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_thigh/L_thigh_box",
+      "second": "L_calf/L_calf_lower_box",
+      "common_ancestor": "L_thigh",
+      "eliminated_continuous_joint_symmetries": [],
+      "symmetry_guard_m": 0.0,
+      "method": "continuous_angular_lipschitz_support_projections",
+      "certified": true,
+      "conservative_gap_m": 0.008676703013955036,
+      "relative_joint": "L_calf_joint",
+      "relative_joint_range_rad": [
+        -2.6,
+        0.0
+      ],
+      "moving_collision": "L_calf/L_calf_lower_box",
+      "point_speed_bound_m_per_rad": 0.2021758858212571,
+      "speed_bound_reason": "maximum box-vertex radius from the relative joint axis",
+      "closed_cover_panel_count": 5257,
+      "panel_width_rad": 0.0004945786570287236,
+      "maximum_midpoint_to_panel_bound_m": 4.999593904653495e-05,
+      "worst_panel_midpoint_rad": -2.5997527106714857,
+      "worst_panel_projection_lower_m": 0.008726699953001571,
+      "inequality": "gap(q) >= support_projection_lower(midpoint) - speed_bound * panel_width / 2 - symmetry_guard - numeric_guard",
+      "domain": "closed panels cover the entire relative-joint interval; all upstream angles cancel"
+    },
+    {
+      "first": "L_thigh/L_thigh_box",
+      "second": "L_footmotor/L_footmotor_housing",
+      "common_ancestor": "L_thigh",
+      "eliminated_continuous_joint_symmetries": [],
+      "symmetry_guard_m": 0.0,
+      "method": "continuous_angular_lipschitz_support_projections",
+      "certified": true,
+      "conservative_gap_m": 0.05164690081001761,
+      "relative_joint": "L_calf_joint",
+      "relative_joint_range_rad": [
+        -2.6,
+        0.0
+      ],
+      "moving_collision": "L_footmotor/L_footmotor_housing",
+      "point_speed_bound_m_per_rad": 0.23394,
+      "speed_bound_reason": "maximum cylinder-axis endpoint radius plus cylinder radius (conservative)",
+      "closed_cover_panel_count": 6083,
+      "panel_width_rad": 0.00042742068058523755,
+      "maximum_midpoint_to_panel_bound_m": 4.999539700805524e-05,
+      "worst_panel_midpoint_rad": -2.5997862896597073,
+      "worst_panel_projection_lower_m": 0.051696897207025666,
+      "inequality": "gap(q) >= support_projection_lower(midpoint) - speed_bound * panel_width / 2 - symmetry_guard - numeric_guard",
+      "domain": "closed panels cover the entire relative-joint interval; all upstream angles cancel"
+    },
+    {
+      "first": "L_thigh/L_thigh_box",
+      "second": "L_foot/L_wheel",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.00800499899999993,
+      "raw_y_gap_m": 0.008004999999999929,
+      "first_y_interval_m": [
+        0.11127000000000001,
+        0.12627
+      ],
+      "second_y_interval_m": [
+        0.13427499999999992,
+        0.164265
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_thigh/L_thigh_box",
+      "second": "R_thigh/R_thigh_box",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.223999999,
+      "raw_y_gap_m": 0.224,
+      "first_y_interval_m": [
+        0.11127000000000001,
+        0.12627
+      ],
+      "second_y_interval_m": [
+        -0.12772999999999998,
+        -0.11273
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_thigh/L_thigh_box",
+      "second": "R_thigh/R_thigh_knee_motor",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.204749999,
+      "raw_y_gap_m": 0.20475,
+      "first_y_interval_m": [
+        0.11127000000000001,
+        0.12627
+      ],
+      "second_y_interval_m": [
+        -0.12548,
+        -0.09347999999999998
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_thigh/L_thigh_box",
+      "second": "R_calf/R_calf_upper_box",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.243999999,
+      "raw_y_gap_m": 0.244,
+      "first_y_interval_m": [
+        0.11127000000000001,
+        0.12627
+      ],
+      "second_y_interval_m": [
+        -0.14073,
+        -0.13273
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_thigh/L_thigh_box",
+      "second": "R_calf/R_calf_lower_box",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.22299999899999998,
+      "raw_y_gap_m": 0.22299999999999998,
+      "first_y_interval_m": [
+        0.11127000000000001,
+        0.12627
+      ],
+      "second_y_interval_m": [
+        -0.13047999999999998,
+        -0.11172999999999998
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_thigh/L_thigh_box",
+      "second": "R_footmotor/R_footmotor_housing",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.20474999899999996,
+      "raw_y_gap_m": 0.20474999999999996,
+      "first_y_interval_m": [
+        0.11127000000000001,
+        0.12627
+      ],
+      "second_y_interval_m": [
+        -0.13348,
+        -0.09347999999999995
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_thigh/L_thigh_box",
+      "second": "R_foot/R_wheel",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.24600499899999995,
+      "raw_y_gap_m": 0.24600499999999995,
+      "first_y_interval_m": [
+        0.11127000000000001,
+        0.12627
+      ],
+      "second_y_interval_m": [
+        -0.164725,
+        -0.13473499999999994
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_thigh/L_thigh_knee_motor",
+      "second": "L_calf/L_calf_upper_box",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.007249998999999978,
+      "raw_y_gap_m": 0.007249999999999979,
+      "first_y_interval_m": [
+        0.09301999999999999,
+        0.12502000000000002
+      ],
+      "second_y_interval_m": [
+        0.13227,
+        0.14027
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_thigh/L_thigh_knee_motor",
+      "second": "L_calf/L_calf_lower_box",
+      "common_ancestor": "L_thigh",
+      "eliminated_continuous_joint_symmetries": [],
+      "symmetry_guard_m": 0.0,
+      "method": "continuous_angular_lipschitz_support_projections",
+      "certified": true,
+      "conservative_gap_m": 0.05696000306095341,
+      "relative_joint": "L_calf_joint",
+      "relative_joint_range_rad": [
+        -2.6,
+        0.0
+      ],
+      "moving_collision": "L_calf/L_calf_lower_box",
+      "point_speed_bound_m_per_rad": 0.2021758858212571,
+      "speed_bound_reason": "maximum box-vertex radius from the relative joint axis",
+      "closed_cover_panel_count": 5257,
+      "panel_width_rad": 0.0004945786570287236,
+      "maximum_midpoint_to_panel_bound_m": 4.999593904653495e-05,
+      "worst_panel_midpoint_rad": -0.44734639528248055,
+      "worst_panel_projection_lower_m": 0.05700999999999994,
+      "inequality": "gap(q) >= support_projection_lower(midpoint) - speed_bound * panel_width / 2 - symmetry_guard - numeric_guard",
+      "domain": "closed panels cover the entire relative-joint interval; all upstream angles cancel"
+    },
+    {
+      "first": "L_thigh/L_thigh_knee_motor",
+      "second": "L_footmotor/L_footmotor_housing",
+      "common_ancestor": "L_thigh",
+      "eliminated_continuous_joint_symmetries": [],
+      "symmetry_guard_m": 0.0,
+      "method": "continuous_angular_lipschitz_support_projections",
+      "certified": true,
+      "conservative_gap_m": 0.12302000360299191,
+      "relative_joint": "L_calf_joint",
+      "relative_joint_range_rad": [
+        -2.6,
+        0.0
+      ],
+      "moving_collision": "L_footmotor/L_footmotor_housing",
+      "point_speed_bound_m_per_rad": 0.23394,
+      "speed_bound_reason": "maximum cylinder-axis endpoint radius plus cylinder radius (conservative)",
+      "closed_cover_panel_count": 6083,
+      "panel_width_rad": 0.00042742068058523755,
+      "maximum_midpoint_to_panel_bound_m": 4.999539700805524e-05,
+      "worst_panel_midpoint_rad": -0.8234259411474603,
+      "worst_panel_projection_lower_m": 0.12306999999999996,
+      "inequality": "gap(q) >= support_projection_lower(midpoint) - speed_bound * panel_width / 2 - symmetry_guard - numeric_guard",
+      "domain": "closed panels cover the entire relative-joint interval; all upstream angles cancel"
+    },
+    {
+      "first": "L_thigh/L_thigh_knee_motor",
+      "second": "L_foot/L_wheel",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.009254998999999903,
+      "raw_y_gap_m": 0.009254999999999902,
+      "first_y_interval_m": [
+        0.09301999999999999,
+        0.12502000000000002
+      ],
+      "second_y_interval_m": [
+        0.13427499999999992,
+        0.164265
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_thigh/L_thigh_knee_motor",
+      "second": "R_thigh/R_thigh_box",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.205749999,
+      "raw_y_gap_m": 0.20575,
+      "first_y_interval_m": [
+        0.09301999999999999,
+        0.12502000000000002
+      ],
+      "second_y_interval_m": [
+        -0.12772999999999998,
+        -0.11273
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_thigh/L_thigh_knee_motor",
+      "second": "R_thigh/R_thigh_knee_motor",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.18649999899999997,
+      "raw_y_gap_m": 0.18649999999999997,
+      "first_y_interval_m": [
+        0.09301999999999999,
+        0.12502000000000002
+      ],
+      "second_y_interval_m": [
+        -0.12548,
+        -0.09347999999999998
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_thigh/L_thigh_knee_motor",
+      "second": "R_calf/R_calf_upper_box",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.22574999899999998,
+      "raw_y_gap_m": 0.22574999999999998,
+      "first_y_interval_m": [
+        0.09301999999999999,
+        0.12502000000000002
+      ],
+      "second_y_interval_m": [
+        -0.14073,
+        -0.13273
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_thigh/L_thigh_knee_motor",
+      "second": "R_calf/R_calf_lower_box",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.204749999,
+      "raw_y_gap_m": 0.20475,
+      "first_y_interval_m": [
+        0.09301999999999999,
+        0.12502000000000002
+      ],
+      "second_y_interval_m": [
+        -0.13047999999999998,
+        -0.11172999999999998
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_thigh/L_thigh_knee_motor",
+      "second": "R_footmotor/R_footmotor_housing",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.18649999899999994,
+      "raw_y_gap_m": 0.18649999999999994,
+      "first_y_interval_m": [
+        0.09301999999999999,
+        0.12502000000000002
+      ],
+      "second_y_interval_m": [
+        -0.13348,
+        -0.09347999999999995
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_thigh/L_thigh_knee_motor",
+      "second": "R_foot/R_wheel",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.22775499899999993,
+      "raw_y_gap_m": 0.22775499999999993,
+      "first_y_interval_m": [
+        0.09301999999999999,
+        0.12502000000000002
+      ],
+      "second_y_interval_m": [
+        -0.164725,
+        -0.13473499999999994
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_calf/L_calf_upper_box",
+      "second": "L_calf/L_calf_lower_box",
+      "method": "permitted_reference_overlap",
+      "certified": true,
+      "permitted_overlap": true,
+      "conservative_gap_m": null,
+      "domain": "same-link composite collision primitives"
+    },
+    {
+      "first": "L_calf/L_calf_upper_box",
+      "second": "L_footmotor/L_footmotor_housing",
+      "method": "permitted_reference_overlap",
+      "certified": true,
+      "permitted_overlap": true,
+      "conservative_gap_m": null,
+      "domain": "same-side calf/footmotor connection overlap following the reference primitive logic"
+    },
+    {
+      "first": "L_calf/L_calf_upper_box",
+      "second": "L_foot/L_wheel",
+      "method": "unsupported",
+      "certified": false,
+      "conservative_gap_m": null,
+      "explanation": "L_foot_joint: requested certificate needs over one million angular panels"
+    },
+    {
+      "first": "L_calf/L_calf_upper_box",
+      "second": "R_thigh/R_thigh_box",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.244999999,
+      "raw_y_gap_m": 0.245,
+      "first_y_interval_m": [
+        0.13227,
+        0.14027
+      ],
+      "second_y_interval_m": [
+        -0.12772999999999998,
+        -0.11273
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_calf/L_calf_upper_box",
+      "second": "R_thigh/R_thigh_knee_motor",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.22574999899999998,
+      "raw_y_gap_m": 0.22574999999999998,
+      "first_y_interval_m": [
+        0.13227,
+        0.14027
+      ],
+      "second_y_interval_m": [
+        -0.12548,
+        -0.09347999999999998
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_calf/L_calf_upper_box",
+      "second": "R_calf/R_calf_upper_box",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.264999999,
+      "raw_y_gap_m": 0.265,
+      "first_y_interval_m": [
+        0.13227,
+        0.14027
+      ],
+      "second_y_interval_m": [
+        -0.14073,
+        -0.13273
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_calf/L_calf_upper_box",
+      "second": "R_calf/R_calf_lower_box",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.243999999,
+      "raw_y_gap_m": 0.244,
+      "first_y_interval_m": [
+        0.13227,
+        0.14027
+      ],
+      "second_y_interval_m": [
+        -0.13047999999999998,
+        -0.11172999999999998
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_calf/L_calf_upper_box",
+      "second": "R_footmotor/R_footmotor_housing",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.22574999899999995,
+      "raw_y_gap_m": 0.22574999999999995,
+      "first_y_interval_m": [
+        0.13227,
+        0.14027
+      ],
+      "second_y_interval_m": [
+        -0.13348,
+        -0.09347999999999995
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_calf/L_calf_upper_box",
+      "second": "R_foot/R_wheel",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.2670049989999999,
+      "raw_y_gap_m": 0.26700499999999994,
+      "first_y_interval_m": [
+        0.13227,
+        0.14027
+      ],
+      "second_y_interval_m": [
+        -0.164725,
+        -0.13473499999999994
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_calf/L_calf_lower_box",
+      "second": "L_footmotor/L_footmotor_housing",
+      "method": "permitted_reference_overlap",
+      "certified": true,
+      "permitted_overlap": true,
+      "conservative_gap_m": null,
+      "domain": "same-side calf/footmotor connection overlap following the reference primitive logic"
+    },
+    {
+      "first": "L_calf/L_calf_lower_box",
+      "second": "L_foot/L_wheel",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.004254998999999925,
+      "raw_y_gap_m": 0.0042549999999999255,
+      "first_y_interval_m": [
+        0.11127,
+        0.13002
+      ],
+      "second_y_interval_m": [
+        0.13427499999999992,
+        0.164265
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_calf/L_calf_lower_box",
+      "second": "R_thigh/R_thigh_box",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.22399999899999998,
+      "raw_y_gap_m": 0.22399999999999998,
+      "first_y_interval_m": [
+        0.11127,
+        0.13002
+      ],
+      "second_y_interval_m": [
+        -0.12772999999999998,
+        -0.11273
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_calf/L_calf_lower_box",
+      "second": "R_thigh/R_thigh_knee_motor",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.204749999,
+      "raw_y_gap_m": 0.20475,
+      "first_y_interval_m": [
+        0.11127,
+        0.13002
+      ],
+      "second_y_interval_m": [
+        -0.12548,
+        -0.09347999999999998
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_calf/L_calf_lower_box",
+      "second": "R_calf/R_calf_upper_box",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.243999999,
+      "raw_y_gap_m": 0.244,
+      "first_y_interval_m": [
+        0.11127,
+        0.13002
+      ],
+      "second_y_interval_m": [
+        -0.14073,
+        -0.13273
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_calf/L_calf_lower_box",
+      "second": "R_calf/R_calf_lower_box",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.22299999899999998,
+      "raw_y_gap_m": 0.22299999999999998,
+      "first_y_interval_m": [
+        0.11127,
+        0.13002
+      ],
+      "second_y_interval_m": [
+        -0.13047999999999998,
+        -0.11172999999999998
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_calf/L_calf_lower_box",
+      "second": "R_footmotor/R_footmotor_housing",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.20474999899999993,
+      "raw_y_gap_m": 0.20474999999999993,
+      "first_y_interval_m": [
+        0.11127,
+        0.13002
+      ],
+      "second_y_interval_m": [
+        -0.13348,
+        -0.09347999999999995
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_calf/L_calf_lower_box",
+      "second": "R_foot/R_wheel",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.24600499899999992,
+      "raw_y_gap_m": 0.24600499999999992,
+      "first_y_interval_m": [
+        0.11127,
+        0.13002
+      ],
+      "second_y_interval_m": [
+        -0.164725,
+        -0.13473499999999994
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_footmotor/L_footmotor_housing",
+      "second": "L_foot/L_wheel",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.001254998999999923,
+      "raw_y_gap_m": 0.0012549999999999228,
+      "first_y_interval_m": [
+        0.09301999999999996,
+        0.13302
+      ],
+      "second_y_interval_m": [
+        0.13427499999999992,
+        0.164265
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_footmotor/L_footmotor_housing",
+      "second": "R_thigh/R_thigh_box",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.20574999899999996,
+      "raw_y_gap_m": 0.20574999999999996,
+      "first_y_interval_m": [
+        0.09301999999999996,
+        0.13302
+      ],
+      "second_y_interval_m": [
+        -0.12772999999999998,
+        -0.11273
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_footmotor/L_footmotor_housing",
+      "second": "R_thigh/R_thigh_knee_motor",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.18649999899999994,
+      "raw_y_gap_m": 0.18649999999999994,
+      "first_y_interval_m": [
+        0.09301999999999996,
+        0.13302
+      ],
+      "second_y_interval_m": [
+        -0.12548,
+        -0.09347999999999998
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_footmotor/L_footmotor_housing",
+      "second": "R_calf/R_calf_upper_box",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.22574999899999995,
+      "raw_y_gap_m": 0.22574999999999995,
+      "first_y_interval_m": [
+        0.09301999999999996,
+        0.13302
+      ],
+      "second_y_interval_m": [
+        -0.14073,
+        -0.13273
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_footmotor/L_footmotor_housing",
+      "second": "R_calf/R_calf_lower_box",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.20474999899999993,
+      "raw_y_gap_m": 0.20474999999999993,
+      "first_y_interval_m": [
+        0.09301999999999996,
+        0.13302
+      ],
+      "second_y_interval_m": [
+        -0.13047999999999998,
+        -0.11172999999999998
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_footmotor/L_footmotor_housing",
+      "second": "R_footmotor/R_footmotor_housing",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.18649999899999992,
+      "raw_y_gap_m": 0.18649999999999992,
+      "first_y_interval_m": [
+        0.09301999999999996,
+        0.13302
+      ],
+      "second_y_interval_m": [
+        -0.13348,
+        -0.09347999999999995
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_footmotor/L_footmotor_housing",
+      "second": "R_foot/R_wheel",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.2277549989999999,
+      "raw_y_gap_m": 0.2277549999999999,
+      "first_y_interval_m": [
+        0.09301999999999996,
+        0.13302
+      ],
+      "second_y_interval_m": [
+        -0.164725,
+        -0.13473499999999994
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_foot/L_wheel",
+      "second": "R_thigh/R_thigh_box",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.24700499899999992,
+      "raw_y_gap_m": 0.24700499999999992,
+      "first_y_interval_m": [
+        0.13427499999999992,
+        0.164265
+      ],
+      "second_y_interval_m": [
+        -0.12772999999999998,
+        -0.11273
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_foot/L_wheel",
+      "second": "R_thigh/R_thigh_knee_motor",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.2277549989999999,
+      "raw_y_gap_m": 0.2277549999999999,
+      "first_y_interval_m": [
+        0.13427499999999992,
+        0.164265
+      ],
+      "second_y_interval_m": [
+        -0.12548,
+        -0.09347999999999998
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_foot/L_wheel",
+      "second": "R_calf/R_calf_upper_box",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.2670049989999999,
+      "raw_y_gap_m": 0.26700499999999994,
+      "first_y_interval_m": [
+        0.13427499999999992,
+        0.164265
+      ],
+      "second_y_interval_m": [
+        -0.14073,
+        -0.13273
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_foot/L_wheel",
+      "second": "R_calf/R_calf_lower_box",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.24600499899999992,
+      "raw_y_gap_m": 0.24600499999999992,
+      "first_y_interval_m": [
+        0.13427499999999992,
+        0.164265
+      ],
+      "second_y_interval_m": [
+        -0.13047999999999998,
+        -0.11172999999999998
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_foot/L_wheel",
+      "second": "R_footmotor/R_footmotor_housing",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.22775499899999987,
+      "raw_y_gap_m": 0.22775499999999987,
+      "first_y_interval_m": [
+        0.13427499999999992,
+        0.164265
+      ],
+      "second_y_interval_m": [
+        -0.13348,
+        -0.09347999999999995
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "L_foot/L_wheel",
+      "second": "R_foot/R_wheel",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.26900999899999983,
+      "raw_y_gap_m": 0.26900999999999986,
+      "first_y_interval_m": [
+        0.13427499999999992,
+        0.164265
+      ],
+      "second_y_interval_m": [
+        -0.164725,
+        -0.13473499999999994
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "R_thigh/R_thigh_box",
+      "second": "R_thigh/R_thigh_knee_motor",
+      "method": "permitted_reference_overlap",
+      "certified": true,
+      "permitted_overlap": true,
+      "conservative_gap_m": null,
+      "domain": "same-link composite collision primitives"
+    },
+    {
+      "first": "R_thigh/R_thigh_box",
+      "second": "R_calf/R_calf_upper_box",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.004999999000000004,
+      "raw_y_gap_m": 0.0050000000000000044,
+      "first_y_interval_m": [
+        -0.12772999999999998,
+        -0.11273
+      ],
+      "second_y_interval_m": [
+        -0.14073,
+        -0.13273
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "R_thigh/R_thigh_box",
+      "second": "R_calf/R_calf_lower_box",
+      "common_ancestor": "R_thigh",
+      "eliminated_continuous_joint_symmetries": [],
+      "symmetry_guard_m": 0.0,
+      "method": "continuous_angular_lipschitz_support_projections",
+      "certified": true,
+      "conservative_gap_m": 0.008676703013955036,
+      "relative_joint": "R_calf_joint",
+      "relative_joint_range_rad": [
+        -2.6,
+        0.0
+      ],
+      "moving_collision": "R_calf/R_calf_lower_box",
+      "point_speed_bound_m_per_rad": 0.2021758858212571,
+      "speed_bound_reason": "maximum box-vertex radius from the relative joint axis",
+      "closed_cover_panel_count": 5257,
+      "panel_width_rad": 0.0004945786570287236,
+      "maximum_midpoint_to_panel_bound_m": 4.999593904653495e-05,
+      "worst_panel_midpoint_rad": -2.5997527106714857,
+      "worst_panel_projection_lower_m": 0.008726699953001571,
+      "inequality": "gap(q) >= support_projection_lower(midpoint) - speed_bound * panel_width / 2 - symmetry_guard - numeric_guard",
+      "domain": "closed panels cover the entire relative-joint interval; all upstream angles cancel"
+    },
+    {
+      "first": "R_thigh/R_thigh_box",
+      "second": "R_footmotor/R_footmotor_housing",
+      "common_ancestor": "R_thigh",
+      "eliminated_continuous_joint_symmetries": [],
+      "symmetry_guard_m": 0.0,
+      "method": "continuous_angular_lipschitz_support_projections",
+      "certified": true,
+      "conservative_gap_m": 0.05164690081001761,
+      "relative_joint": "R_calf_joint",
+      "relative_joint_range_rad": [
+        -2.6,
+        0.0
+      ],
+      "moving_collision": "R_footmotor/R_footmotor_housing",
+      "point_speed_bound_m_per_rad": 0.23394,
+      "speed_bound_reason": "maximum cylinder-axis endpoint radius plus cylinder radius (conservative)",
+      "closed_cover_panel_count": 6083,
+      "panel_width_rad": 0.00042742068058523755,
+      "maximum_midpoint_to_panel_bound_m": 4.999539700805524e-05,
+      "worst_panel_midpoint_rad": -2.5997862896597073,
+      "worst_panel_projection_lower_m": 0.051696897207025666,
+      "inequality": "gap(q) >= support_projection_lower(midpoint) - speed_bound * panel_width / 2 - symmetry_guard - numeric_guard",
+      "domain": "closed panels cover the entire relative-joint interval; all upstream angles cancel"
+    },
+    {
+      "first": "R_thigh/R_thigh_box",
+      "second": "R_foot/R_wheel",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.007004998999999955,
+      "raw_y_gap_m": 0.007004999999999956,
+      "first_y_interval_m": [
+        -0.12772999999999998,
+        -0.11273
+      ],
+      "second_y_interval_m": [
+        -0.164725,
+        -0.13473499999999994
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "R_thigh/R_thigh_knee_motor",
+      "second": "R_calf/R_calf_upper_box",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.007249998999999978,
+      "raw_y_gap_m": 0.007249999999999979,
+      "first_y_interval_m": [
+        -0.12548,
+        -0.09347999999999998
+      ],
+      "second_y_interval_m": [
+        -0.14073,
+        -0.13273
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "R_thigh/R_thigh_knee_motor",
+      "second": "R_calf/R_calf_lower_box",
+      "common_ancestor": "R_thigh",
+      "eliminated_continuous_joint_symmetries": [],
+      "symmetry_guard_m": 0.0,
+      "method": "continuous_angular_lipschitz_support_projections",
+      "certified": true,
+      "conservative_gap_m": 0.056960003060953404,
+      "relative_joint": "R_calf_joint",
+      "relative_joint_range_rad": [
+        -2.6,
+        0.0
+      ],
+      "moving_collision": "R_calf/R_calf_lower_box",
+      "point_speed_bound_m_per_rad": 0.2021758858212571,
+      "speed_bound_reason": "maximum box-vertex radius from the relative joint axis",
+      "closed_cover_panel_count": 5257,
+      "panel_width_rad": 0.0004945786570287236,
+      "maximum_midpoint_to_panel_bound_m": 4.999593904653495e-05,
+      "worst_panel_midpoint_rad": -0.4424006087121932,
+      "worst_panel_projection_lower_m": 0.057009999999999936,
+      "inequality": "gap(q) >= support_projection_lower(midpoint) - speed_bound * panel_width / 2 - symmetry_guard - numeric_guard",
+      "domain": "closed panels cover the entire relative-joint interval; all upstream angles cancel"
+    },
+    {
+      "first": "R_thigh/R_thigh_knee_motor",
+      "second": "R_footmotor/R_footmotor_housing",
+      "common_ancestor": "R_thigh",
+      "eliminated_continuous_joint_symmetries": [],
+      "symmetry_guard_m": 0.0,
+      "method": "continuous_angular_lipschitz_support_projections",
+      "certified": true,
+      "conservative_gap_m": 0.12302000360299191,
+      "relative_joint": "R_calf_joint",
+      "relative_joint_range_rad": [
+        -2.6,
+        0.0
+      ],
+      "moving_collision": "R_footmotor/R_footmotor_housing",
+      "point_speed_bound_m_per_rad": 0.23394,
+      "speed_bound_reason": "maximum cylinder-axis endpoint radius plus cylinder radius (conservative)",
+      "closed_cover_panel_count": 6083,
+      "panel_width_rad": 0.00042742068058523755,
+      "maximum_midpoint_to_panel_bound_m": 4.999539700805524e-05,
+      "worst_panel_midpoint_rad": -0.8234259411474603,
+      "worst_panel_projection_lower_m": 0.12306999999999996,
+      "inequality": "gap(q) >= support_projection_lower(midpoint) - speed_bound * panel_width / 2 - symmetry_guard - numeric_guard",
+      "domain": "closed panels cover the entire relative-joint interval; all upstream angles cancel"
+    },
+    {
+      "first": "R_thigh/R_thigh_knee_motor",
+      "second": "R_foot/R_wheel",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.00925499899999993,
+      "raw_y_gap_m": 0.00925499999999993,
+      "first_y_interval_m": [
+        -0.12548,
+        -0.09347999999999998
+      ],
+      "second_y_interval_m": [
+        -0.164725,
+        -0.13473499999999994
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "R_calf/R_calf_upper_box",
+      "second": "R_calf/R_calf_lower_box",
+      "method": "permitted_reference_overlap",
+      "certified": true,
+      "permitted_overlap": true,
+      "conservative_gap_m": null,
+      "domain": "same-link composite collision primitives"
+    },
+    {
+      "first": "R_calf/R_calf_upper_box",
+      "second": "R_footmotor/R_footmotor_housing",
+      "method": "permitted_reference_overlap",
+      "certified": true,
+      "permitted_overlap": true,
+      "conservative_gap_m": null,
+      "domain": "same-side calf/footmotor connection overlap following the reference primitive logic"
+    },
+    {
+      "first": "R_calf/R_calf_upper_box",
+      "second": "R_foot/R_wheel",
+      "method": "unsupported",
+      "certified": false,
+      "conservative_gap_m": null,
+      "explanation": "R_foot_joint: requested certificate needs over one million angular panels"
+    },
+    {
+      "first": "R_calf/R_calf_lower_box",
+      "second": "R_footmotor/R_footmotor_housing",
+      "method": "permitted_reference_overlap",
+      "certified": true,
+      "permitted_overlap": true,
+      "conservative_gap_m": null,
+      "domain": "same-side calf/footmotor connection overlap following the reference primitive logic"
+    },
+    {
+      "first": "R_calf/R_calf_lower_box",
+      "second": "R_foot/R_wheel",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.004254998999999953,
+      "raw_y_gap_m": 0.004254999999999953,
+      "first_y_interval_m": [
+        -0.13047999999999998,
+        -0.11172999999999998
+      ],
+      "second_y_interval_m": [
+        -0.164725,
+        -0.13473499999999994
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    },
+    {
+      "first": "R_footmotor/R_footmotor_housing",
+      "second": "R_foot/R_wheel",
+      "method": "invariant_global_y_intervals",
+      "certified": true,
+      "conservative_gap_m": 0.0012549989999999507,
+      "raw_y_gap_m": 0.0012549999999999506,
+      "first_y_interval_m": [
+        -0.13348,
+        -0.09347999999999995
+      ],
+      "second_y_interval_m": [
+        -0.164725,
+        -0.13473499999999994
+      ],
+      "domain": "all configured revolute limits and all continuous-joint angles"
+    }
+  ],
+  "robot_name": "q1",
+  "root_link": "trunk",
+  "urdf_sha256": "7a137a046c597e7ef3cf7e580726311ba3eb6bbe782650b64b26aaafc32eb88b",
+  "link_count": 9,
+  "collision_count": 13,
+  "required_pair_count": 78,
+  "collision_parameters": [
+    {
+      "id": "trunk/trunk_box",
+      "link": "trunk",
+      "shape": "box",
+      "origin_xyz_m": [
+        -0.025225,
+        -0.0007275,
+        0.0033861
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "invariant_global_y_interval_m": [
+        -0.11072850000000001,
+        0.1092735
+      ],
+      "box_size_m": [
+        0.280343,
+        0.220002,
+        0.154902
+      ]
+    },
+    {
+      "id": "L_thigh/L_thigh_box",
+      "link": "L_thigh",
+      "shape": "box",
+      "origin_xyz_m": [
+        0.0,
+        0.0115,
+        -0.08775
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "invariant_global_y_interval_m": [
+        0.11127000000000001,
+        0.12627
+      ],
+      "box_size_m": [
+        0.035,
+        0.015,
+        0.2245
+      ]
+    },
+    {
+      "id": "L_thigh/L_thigh_knee_motor",
+      "link": "L_thigh",
+      "shape": "cylinder",
+      "origin_xyz_m": [
+        0.0,
+        0.00175,
+        -0.2
+      ],
+      "origin_rpy_rad": [
+        1.570796326794897,
+        0.0,
+        0.0
+      ],
+      "invariant_global_y_interval_m": [
+        0.09301999999999999,
+        0.12502000000000002
+      ],
+      "radius_m": 0.04299,
+      "length_m": 0.032
+    },
+    {
+      "id": "L_calf/L_calf_upper_box",
+      "link": "L_calf",
+      "shape": "box",
+      "origin_xyz_m": [
+        0.00683918,
+        0.009,
+        -0.0475
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        -0.143,
+        0.0
+      ],
+      "invariant_global_y_interval_m": [
+        0.13227,
+        0.14027
+      ],
+      "box_size_m": [
+        0.03,
+        0.008,
+        0.09597967
+      ]
+    },
+    {
+      "id": "L_calf/L_calf_lower_box",
+      "link": "L_calf",
+      "shape": "box",
+      "origin_xyz_m": [
+        0.0144369,
+        -0.006625,
+        -0.15
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "invariant_global_y_interval_m": [
+        0.11127,
+        0.13002
+      ],
+      "box_size_m": [
+        0.03029,
+        0.01875,
+        0.1
+      ]
+    },
+    {
+      "id": "L_footmotor/L_footmotor_housing",
+      "link": "L_footmotor",
+      "shape": "cylinder",
+      "origin_xyz_m": [
+        0.0,
+        0.02225,
+        0.0
+      ],
+      "origin_rpy_rad": [
+        1.570796326794897,
+        0.0,
+        0.0
+      ],
+      "invariant_global_y_interval_m": [
+        0.09301999999999996,
+        0.13302
+      ],
+      "radius_m": 0.03394,
+      "length_m": 0.04
+    },
+    {
+      "id": "L_foot/L_wheel",
+      "link": "L_foot",
+      "shape": "cylinder",
+      "origin_xyz_m": [
+        0.0,
+        -0.015,
+        0.0
+      ],
+      "origin_rpy_rad": [
+        1.570796326794897,
+        0.0,
+        0.0
+      ],
+      "invariant_global_y_interval_m": [
+        0.13427499999999992,
+        0.164265
+      ],
+      "radius_m": 0.07496,
+      "length_m": 0.02999
+    },
+    {
+      "id": "R_thigh/R_thigh_box",
+      "link": "R_thigh",
+      "shape": "box",
+      "origin_xyz_m": [
+        0.0,
+        -0.0115,
+        -0.08775
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "invariant_global_y_interval_m": [
+        -0.12772999999999998,
+        -0.11273
+      ],
+      "box_size_m": [
+        0.035,
+        0.015,
+        0.2245
+      ]
+    },
+    {
+      "id": "R_thigh/R_thigh_knee_motor",
+      "link": "R_thigh",
+      "shape": "cylinder",
+      "origin_xyz_m": [
+        0.0,
+        -0.00075,
+        -0.2
+      ],
+      "origin_rpy_rad": [
+        1.570796326794897,
+        0.0,
+        0.0
+      ],
+      "invariant_global_y_interval_m": [
+        -0.12548,
+        -0.09347999999999998
+      ],
+      "radius_m": 0.04299,
+      "length_m": 0.032
+    },
+    {
+      "id": "R_calf/R_calf_upper_box",
+      "link": "R_calf",
+      "shape": "box",
+      "origin_xyz_m": [
+        0.00683918,
+        -0.009,
+        -0.0475
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        -0.143,
+        0.0
+      ],
+      "invariant_global_y_interval_m": [
+        -0.14073,
+        -0.13273
+      ],
+      "box_size_m": [
+        0.03,
+        0.008,
+        0.09597967
+      ]
+    },
+    {
+      "id": "R_calf/R_calf_lower_box",
+      "link": "R_calf",
+      "shape": "box",
+      "origin_xyz_m": [
+        0.0144369,
+        0.006625,
+        -0.15
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "invariant_global_y_interval_m": [
+        -0.13047999999999998,
+        -0.11172999999999998
+      ],
+      "box_size_m": [
+        0.03029,
+        0.01875,
+        0.1
+      ]
+    },
+    {
+      "id": "R_footmotor/R_footmotor_housing",
+      "link": "R_footmotor",
+      "shape": "cylinder",
+      "origin_xyz_m": [
+        0.0,
+        -0.02225,
+        0.0
+      ],
+      "origin_rpy_rad": [
+        1.570796326794897,
+        0.0,
+        0.0
+      ],
+      "invariant_global_y_interval_m": [
+        -0.13348,
+        -0.09347999999999995
+      ],
+      "radius_m": 0.03394,
+      "length_m": 0.04
+    },
+    {
+      "id": "R_foot/R_wheel",
+      "link": "R_foot",
+      "shape": "cylinder",
+      "origin_xyz_m": [
+        0.0,
+        0.015,
+        0.0
+      ],
+      "origin_rpy_rad": [
+        1.570796326794897,
+        0.0,
+        0.0
+      ],
+      "invariant_global_y_interval_m": [
+        -0.164725,
+        -0.13473499999999994
+      ],
+      "radius_m": 0.07496,
+      "length_m": 0.02999
+    }
+  ],
+  "active_joint_domains": [
+    {
+      "name": "L_thigh_joint",
+      "type": "revolute",
+      "axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "range_rad": [
+        -1.57,
+        1.57
+      ],
+      "range_description": "closed configured limit interval"
+    },
+    {
+      "name": "L_calf_joint",
+      "type": "revolute",
+      "axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "range_rad": [
+        -2.6,
+        0.0
+      ],
+      "range_description": "closed configured limit interval"
+    },
+    {
+      "name": "L_foot_joint",
+      "type": "revolute",
+      "axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "range_rad": [
+        -99999.0,
+        99999.0
+      ],
+      "range_description": "closed configured limit interval"
+    },
+    {
+      "name": "R_thigh_joint",
+      "type": "revolute",
+      "axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "range_rad": [
+        -1.57,
+        1.57
+      ],
+      "range_description": "closed configured limit interval"
+    },
+    {
+      "name": "R_calf_joint",
+      "type": "revolute",
+      "axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "range_rad": [
+        -2.6,
+        0.0
+      ],
+      "range_description": "closed configured limit interval"
+    },
+    {
+      "name": "R_foot_joint",
+      "type": "revolute",
+      "axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "range_rad": [
+        -99999.0,
+        99999.0
+      ],
+      "range_description": "closed configured limit interval"
+    }
+  ],
+  "maximum_requested_angular_penalty_m": 5e-05,
+  "checked_pair_count": 78,
+  "permitted_overlap_pair_count": 8,
+  "status": "not_certified",
+  "certified_all_current_joint_ranges": false,
+  "minimum_conservative_gap_m": -5.000025294888598e-05,
+  "minimum_pair": [
+    "trunk/trunk_box",
+    "L_thigh/L_thigh_knee_motor"
+  ],
+  "uncertified_pair_count": 6,
+  "uncertified_pairs": [
+    {
+      "first": "trunk/trunk_box",
+      "second": "L_thigh/L_thigh_knee_motor",
+      "method": "continuous_angular_lipschitz_support_projections",
+      "explanation": null
+    },
+    {
+      "first": "trunk/trunk_box",
+      "second": "L_footmotor/L_footmotor_housing",
+      "method": "unsupported",
+      "explanation": "trunk/trunk_box / L_footmotor/L_footmotor_housing: more than one relative active joint remains after symmetry elimination"
+    },
+    {
+      "first": "trunk/trunk_box",
+      "second": "R_thigh/R_thigh_knee_motor",
+      "method": "continuous_angular_lipschitz_support_projections",
+      "explanation": null
+    },
+    {
+      "first": "trunk/trunk_box",
+      "second": "R_footmotor/R_footmotor_housing",
+      "method": "unsupported",
+      "explanation": "trunk/trunk_box / R_footmotor/R_footmotor_housing: more than one relative active joint remains after symmetry elimination"
+    },
+    {
+      "first": "L_calf/L_calf_upper_box",
+      "second": "L_foot/L_wheel",
+      "method": "unsupported",
+      "explanation": "L_foot_joint: requested certificate needs over one million angular panels"
+    },
+    {
+      "first": "R_calf/R_calf_upper_box",
+      "second": "R_foot/R_wheel",
+      "method": "unsupported",
+      "explanation": "R_foot_joint: requested certificate needs over one million angular panels"
+    }
+  ],
+  "explanation": "At least one pair has a nonpositive lower bound or an unsupported proof premise. This is not a collision claim; separation has not been certified for those pairs."
+}
