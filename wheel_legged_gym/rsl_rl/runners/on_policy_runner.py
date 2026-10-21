@@ -116,7 +116,8 @@ class OnPolicyRunner:
             self.env.num_envs, dtype=torch.float, device=self.device
         )
 
-        tot_iter = self.current_learning_iteration + num_learning_iterations
+        start_iter = self.current_learning_iteration
+        tot_iter = start_iter + num_learning_iterations
         for it in range(self.current_learning_iteration, tot_iter):
             start = time.time()
             # Rollout
@@ -172,12 +173,13 @@ class OnPolicyRunner:
             learn_time = stop - start
             if self.log_dir is not None:
                 self.log(locals())
-            if it % self.save_interval == 0:
-                self.save(os.path.join(self.log_dir, "model_{}.pt".format(it)))
+            self.current_learning_iteration = it + 1
+            if self.current_learning_iteration % self.save_interval == 0:
+                self.save(os.path.join(self.log_dir, "model_{}.pt".format(self.current_learning_iteration)))
             ep_infos.clear()
-        self.current_learning_iteration = num_learning_iterations
+        self.current_learning_iteration = tot_iter
         self.save(
-            os.path.join(self.log_dir, "model_{}.pt".format(num_learning_iterations))
+            os.path.join(self.log_dir, "model_{}.pt".format(self.current_learning_iteration))
         )
 
     def log(self, locs, width=80, pad=35):
@@ -231,7 +233,7 @@ class OnPolicyRunner:
                 locs["it"],
             )
 
-        str = f" \033[1m Learning iteration {locs['it']}/{locs['num_learning_iterations']} \033[0m "
+        str = f" \033[1m Learning iteration {locs['it'] + 1}/{locs['tot_iter']} \033[0m "
 
         if len(locs["rewbuffer"]) > 0:
             log_string = (
@@ -266,8 +268,8 @@ class OnPolicyRunner:
             f"""{'Total timesteps:':>{pad}} {self.tot_timesteps}\n"""
             f"""{'Iteration time:':>{pad}} {iteration_time:.2f}s\n"""
             f"""{'Total time:':>{pad}} {self.tot_time:.2f}s\n"""
-            f"""{'ETA:':>{pad}} {self.tot_time / (locs['it'] + 1) * (
-                               locs['num_learning_iterations'] - locs['it']):.1f}s\n"""
+            f"""{'ETA:':>{pad}} {self.tot_time / (locs['it'] - locs['start_iter'] + 1) * (
+                               locs['tot_iter'] - locs['it'] - 1):.1f}s\n"""
         )
         print(log_string)
 
@@ -277,6 +279,8 @@ class OnPolicyRunner:
                 "model_state_dict": self.alg.actor_critic.state_dict(),
                 "optimizer_state_dict": self.alg.optimizer.state_dict(),
                 "iter": self.current_learning_iteration,
+                "extra_optimizer_state_dict": (self.alg.extra_optimizer.state_dict()
+                                               if self.alg.extra_optimizer is not None else None),
                 "infos": infos,
             },
             path,
@@ -287,6 +291,9 @@ class OnPolicyRunner:
         self.alg.actor_critic.load_state_dict(loaded_dict["model_state_dict"])
         if load_optimizer:
             self.alg.optimizer.load_state_dict(loaded_dict["optimizer_state_dict"])
+            extra_state = loaded_dict.get("extra_optimizer_state_dict")
+            if self.alg.extra_optimizer is not None and extra_state is not None:
+                self.alg.extra_optimizer.load_state_dict(extra_state)
         self.current_learning_iteration = loaded_dict["iter"]
         return loaded_dict["infos"]
 

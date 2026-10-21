@@ -64,3 +64,9 @@ from .q1_flat.q1_flat import Q1Flat
 from .q1_flat.q1_flat_config import Q1FlatCfg, Q1FlatCfgPPO
 
 task_registry.register("q1_flat", Q1Flat, Q1FlatCfg(), Q1FlatCfgPPO())
+
+
+from .q1.q1 import Q1
+from .q1.q1_config import Q1Cfg, Q1CfgPPO
+
+task_registry.register("q1", Q1, Q1Cfg(), Q1CfgPPO())

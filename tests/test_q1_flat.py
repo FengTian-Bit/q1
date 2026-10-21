@@ -63,6 +63,12 @@ load_code("wheel_legged_gym/envs/q1_flat/q1_flat_config.py", NS)
 load_code("wheel_legged_gym/envs/base/legged_robot.py", NS)
 load_code("wheel_legged_gym/envs/q1_flat/q1_flat.py", NS)
 Q1Flat, Q1FlatCfg = NS["Q1Flat"], NS["Q1FlatCfg"]
+def quat_apply(q, v):
+    cross = torch.cross(q[:, :3], v, dim=-1)
+    return v + 2*(q[:, 3:4]*cross + torch.cross(q[:, :3], cross, dim=-1))
+NS["quat_apply"] = quat_apply
+load_code("wheel_legged_gym/envs/q1/q1_config.py", NS)
+load_code("wheel_legged_gym/envs/q1/q1.py", NS)
 
 
 class TensorGym:
@@ -71,6 +77,15 @@ class TensorGym:
         self.root[:, 2], self.root[:, 6] = 0.402, 1.0
         self.dof = torch.zeros(count * 6, 2)
         self.contact = torch.zeros(count * 7, 3)
+        self.rigid = torch.zeros(count, 7, 13)
+        self.rigid[:, :, 6] = 1.0
+        self.rigid[:, [3, 6], 2] = 0.075
+
+    def acquire_rigid_body_state_tensor(self, sim):
+        return self.rigid
+
+    def get_actor_rigid_body_properties(self, env, actor):
+        return [SimpleNamespace(com=SimpleNamespace(x=0.0, y=0.0, z=0.0)) for _ in range(7)]
 
     def acquire_actor_root_state_tensor(self, sim):
         return self.root
@@ -87,16 +102,17 @@ class TensorGym:
         raise AttributeError(name)
 
 
-def make_env(count=32, permutation=None, max_delay_ms=0):
-    cfg = Q1FlatCfg()
+def make_env(count=32, permutation=None, max_delay_ms=0, task_class=Q1Flat, cfg_class=Q1FlatCfg):
+    cfg = cfg_class()
     cfg.env.num_envs = count
     cfg.domain_rand.delay_ms_range = [0, max_delay_ms]
     cfg.domain_rand.randomize_action_delay = max_delay_ms > 0
-    env = Q1Flat.__new__(Q1Flat)
+    env = task_class.__new__(task_class)
     env.cfg, env.device, env.sim = cfg, "cpu", None
     env.sim_params = SimpleNamespace(dt=cfg.sim.dt)
-    env.num_envs, env.num_obs, env.num_actions = count, 27, 6
-    env.num_privileged_obs, env.obs_history_length = 143, 5
+    env.envs, env.actor_handles = [None], [None]
+    env.num_envs, env.num_obs, env.num_actions = count, cfg.env.num_observations, 6
+    env.num_privileged_obs, env.obs_history_length = cfg.env.num_privileged_obs, 5
     env.num_dof = env.num_dofs = 6
     env.num_bodies, env.up_axis_idx = 7, 2
     names = cfg.asset.policy_joint_names
@@ -114,8 +130,8 @@ def make_env(count=32, permutation=None, max_delay_ms=0):
     env.base_com = torch.zeros(count, 3)
     env.friction_coef = torch.full((count,), 0.8)
     env.restitution_coef = torch.zeros(count)
-    env.obs_buf, env.privileged_obs_buf = torch.zeros(count, 27), torch.zeros(count, 143)
-    env.obs_history = torch.zeros(count, 135)
+    env.obs_buf, env.privileged_obs_buf = torch.zeros(count, env.num_obs), torch.zeros(count, env.num_privileged_obs)
+    env.obs_history = torch.zeros(count, env.num_obs*5)
     env.rew_buf = torch.zeros(count)
     for name in ("reset_buf", "time_out_buf", "edge_reset_buf"):
         setattr(env, name, torch.zeros(count, dtype=torch.bool))
@@ -131,6 +147,7 @@ def make_env(count=32, permutation=None, max_delay_ms=0):
     env.dof_pos_limits = torch.tensor([[float(joints[name].find("limit").get("lower")),
                                       float(joints[name].find("limit").get("upper"))]
                                      for name in env.dof_names])
+    env.dof_vel_limits = torch.tensor([float(joints[name].find("limit").get("velocity")) for name in env.dof_names])
     env._prepare_reward_function()
     env.reset_idx(torch.arange(count))
     env._update_leg_kinematics()
@@ -247,7 +264,7 @@ class Q1Tests(unittest.TestCase):
         namespace["LeggedRobotVMC"] = object
         namespace["task_registry"] = SimpleNamespace(register=lambda name, cls, cfg, train: registered.update({name: (cls, cfg, train)}))
         load_code("wheel_legged_gym/envs/__init__.py", namespace)
-        self.assertEqual(set(registered), {"wheel_legged", "wheel_legged_vmc", "wheel_legged_vmc_flat", "q1_flat"})
+        self.assertEqual(set(registered), {"wheel_legged", "wheel_legged_vmc", "wheel_legged_vmc_flat", "q1_flat", "q1"})
         self.assertIs(registered["q1_flat"][0], Q1Flat)
         self.assertEqual(registered["wheel_legged"][1].asset.name, "WheelLegged")
 

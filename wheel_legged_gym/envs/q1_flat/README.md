@@ -51,7 +51,7 @@ python wheel_legged_gym/scripts/train.py --task=q1_flat --q1_stage=low_speed --r
 根据显存和吞吐再提高环境数。阶段切换保留网络接口。
 
 日志位置 `logs/q1_flat/<时间>_<阶段>/`，保存模型、Q1 源码、实际生效的 `resolved_config.json` 和本次 URDF。
-本仓库旧 runner 的续训文件编号使用本次 `max_iterations`，不能仅凭编号推断累计训练量；用实际输出目录和时间区分运行。
+当前 runner 保存已完成的累计训练轮次。旧版本的中间检查点可能记录 iter=0，无法自动恢复这部分历史计数。
 
 ## 播放与导出
 

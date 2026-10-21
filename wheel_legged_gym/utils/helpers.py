@@ -166,7 +166,7 @@ def get_args():
             "type": str,
             "choices": ["balance", "low_speed"],
             "default": "low_speed",
-            "help": "q1_flat only: zero-command balance or mixed balance/slow travel.",
+            "help": "q1/q1_flat: zero-command balance or mixed balance/slow travel.",
         },
         {
             "name": "--task",

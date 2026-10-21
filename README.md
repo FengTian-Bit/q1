@@ -1,4 +1,22 @@
-# Q1 双轮腿强化学习
+# Q1 双轮腿训练
+
+正式任务 **q1**：4096 个并行环境、30000 轮 PPO，平地固定高度、零转向，
+混合停车与 ±0.15–0.3 m/s 前后行驶，包含实际腿姿态、双轮支撑、接触滑移、停车位置与直线路径约束。
+保留 `q1_flat` 和原有三个任务作为对照。
+
+```bash
+# 已安装 Isaac Gym Preview 4 的训练环境，项目根目录执行
+python wheel_legged_gym/scripts/train.py --task=q1 --headless
+python wheel_legged_gym/scripts/play.py --task=q1 --num_envs=1
+tensorboard --logdir=logs/q1
+```
+
+[q1 任务与训练说明](wheel_legged_gym/envs/q1/README.md)。q1 的观测接口已扩展，需要从头训练，不能直接续用 q1_flat 检查点。
+本地 CPU 接口与 PPO 测试不代表已验证真实仿真性能；实际收敛需训练评估。
+
+---
+
+## q1_flat 基线与原项目说明
 
 基于 Wheel-Legged-Gym 的个人 Q1 训练仓库。
 远程仓库：`git@github.com:FengTian-Bit/q1.git`。

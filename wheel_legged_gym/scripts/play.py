@@ -41,6 +41,9 @@ import torch
 
 
 def play(args):
+    if args.task == "q1":
+        from wheel_legged_gym.envs.q1.play_q1 import play_q1
+        return play_q1(args)
     if args.task == "q1_flat":
         from wheel_legged_gym.envs.q1_flat.play_q1 import play_q1
         return play_q1(args)

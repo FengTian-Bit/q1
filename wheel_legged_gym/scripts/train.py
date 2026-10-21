@@ -39,7 +39,7 @@ import torch
 
 
 def train(args):
-    if args.task == "q1_flat":
+    if args.task in ("q1_flat", "q1"):
         env_cfg, q1_train_cfg = task_registry.get_cfgs(args.task)
         if args.q1_stage == "balance":
             env_cfg.commands.ranges.lin_vel_x = [0.0, 0.0]
@@ -51,7 +51,7 @@ def train(args):
         env=env, name=args.task, args=args
     )
     task_registry.save_cfgs(name=args.task)
-    if args.task == "q1_flat":
+    if args.task in ("q1_flat", "q1"):
         import json
         from shutil import copyfile
         from wheel_legged_gym import WHEEL_LEGGED_GYM_ROOT_DIR
@@ -61,6 +61,10 @@ def train(args):
                        "train": class_to_dict(train_cfg)}, output, indent=2)
         asset_path = env_cfg.asset.file.format(WHEEL_LEGGED_GYM_ROOT_DIR=WHEEL_LEGGED_GYM_ROOT_DIR)
         copyfile(asset_path, os.path.join(task_registry.log_dir, "q1.urdf"))
+        if args.task == "q1":
+            for filename in ("q1_flat.py", "q1_flat_config.py"):
+                copyfile(os.path.join(WHEEL_LEGGED_GYM_ROOT_DIR, "wheel_legged_gym", "envs", "q1_flat", filename),
+                         os.path.join(task_registry.log_dir, "parent_"+filename))
     ppo_runner.learn(
         num_learning_iterations=train_cfg.runner.max_iterations,
         init_at_random_ep_len=True,
