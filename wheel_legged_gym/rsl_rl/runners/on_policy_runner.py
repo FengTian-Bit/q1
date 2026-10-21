@@ -34,6 +34,7 @@ from collections import deque
 import statistics
 
 from torch.utils.tensorboard import SummaryWriter
+from wheel_legged_gym.rsl_rl.utils.swanlab_utils import SwanLabSummaryWriter
 import torch
 
 from wheel_legged_gym.rsl_rl.algorithms import PPO
@@ -50,6 +51,7 @@ class OnPolicyRunner:
     def __init__(self, env: VecEnv, train_cfg, log_dir=None, device="cpu"):
 
         self.cfg = train_cfg["runner"]
+        self.train_cfg = train_cfg
         self.alg_cfg = train_cfg["algorithm"]
         self.policy_cfg = train_cfg["policy"]
         self.device = device
@@ -85,13 +87,36 @@ class OnPolicyRunner:
         self.tot_timesteps = 0
         self.tot_time = 0
         self.current_learning_iteration = 0
+        self.swanlab_run_id = None
+        self.loaded_swanlab_run_id = None
+        self.loaded_checkpoint = None
 
         _, _ = self.env.reset()
 
     def learn(self, num_learning_iterations, init_at_random_ep_len=False):
+        try:
+            return self._learn(num_learning_iterations, init_at_random_ep_len)
+        finally:
+            if self.writer is not None:
+                writer, self.writer = self.writer, None
+                writer.close()
+
+    def _learn(self, num_learning_iterations, init_at_random_ep_len=False):
         # initialize writer
         if self.log_dir is not None and self.writer is None:
-            self.writer = SummaryWriter(log_dir=self.log_dir, flush_secs=10)
+            logger = self.cfg.get("logger", "tensorboard").lower()
+            if logger == "swanlab":
+                self.writer = SwanLabSummaryWriter(log_dir=self.log_dir, flush_secs=10, cfg=self.cfg)
+                self.swanlab_run_id = self.writer.run_id
+                self.writer.store_config(self.env.cfg, self.train_cfg, {
+                    "checkpoint": self.loaded_checkpoint,
+                    "previous_swanlab_run_id": self.loaded_swanlab_run_id,
+                    "start_iteration": self.current_learning_iteration,
+                })
+            elif logger == "tensorboard":
+                self.writer = SummaryWriter(log_dir=self.log_dir, flush_secs=10)
+            else:
+                raise ValueError("Unknown logger: {}. Use swanlab or tensorboard.".format(logger))
         if init_at_random_ep_len:
             self.env.episode_length_buf = torch.randint_like(
                 self.env.episode_length_buf, high=int(self.env.max_episode_length)
@@ -189,9 +214,12 @@ class OnPolicyRunner:
 
         ep_string = f""
         if locs["ep_infos"]:
-            for key in locs["ep_infos"][0]:
+            keys = dict.fromkeys(key for info in locs["ep_infos"] for key in info)
+            for key in keys:
                 infotensor = torch.tensor([], device=self.device)
                 for ep_info in locs["ep_infos"]:
+                    if key not in ep_info:
+                        continue
                     # handle scalar and zero dimensional tensor infos
                     if not isinstance(ep_info[key], torch.Tensor):
                         ep_info[key] = torch.Tensor([ep_info[key]])
@@ -279,6 +307,7 @@ class OnPolicyRunner:
                 "model_state_dict": self.alg.actor_critic.state_dict(),
                 "optimizer_state_dict": self.alg.optimizer.state_dict(),
                 "iter": self.current_learning_iteration,
+                "swanlab_run_id": self.swanlab_run_id,
                 "extra_optimizer_state_dict": (self.alg.extra_optimizer.state_dict()
                                                if self.alg.extra_optimizer is not None else None),
                 "infos": infos,
@@ -295,6 +324,8 @@ class OnPolicyRunner:
             if self.alg.extra_optimizer is not None and extra_state is not None:
                 self.alg.extra_optimizer.load_state_dict(extra_state)
         self.current_learning_iteration = loaded_dict["iter"]
+        self.loaded_checkpoint = os.path.abspath(path)
+        self.loaded_swanlab_run_id = loaded_dict.get("swanlab_run_id")
         return loaded_dict["infos"]
 
     def get_inference_policy(self, device=None):

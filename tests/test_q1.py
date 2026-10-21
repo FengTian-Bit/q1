@@ -170,13 +170,13 @@ class Q1ImprovementTests(unittest.TestCase):
 
     def test_real_ppo_resume_saves_completed_iteration_and_encoder_optimizer(self):
         namespace = dict(NS, optim=optim, os=os, time=time, statistics=statistics,
-                         deque=deque, VecEnv=object, SummaryWriter=lambda **kw: object())
+                         deque=deque, VecEnv=object, SummaryWriter=lambda **kw: SimpleNamespace(close=lambda: None))
         for path in ("modules/actor_critic.py", "modules/actor_critic_sequence.py", "storage/rollout_storage.py",
                      "algorithms/ppo.py", "runners/on_policy_runner.py"):
             load_code("wheel_legged_gym/rsl_rl/"+path, namespace)
         train = NS["Q1CfgPPO"]()
         config = NS["class_to_dict"](train)
-        config["runner"].update(num_steps_per_env=2, save_interval=1)
+        config["runner"].update(num_steps_per_env=2, save_interval=1, logger="tensorboard")
         config["policy"].update(actor_hidden_dims=[16, 8], critic_hidden_dims=[16, 8], encoder_hidden_dims=[16, 8])
         config["algorithm"].update(num_learning_epochs=1, num_mini_batches=2)
         def runner(folder):

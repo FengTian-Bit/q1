@@ -76,3 +76,7 @@ venv/
 *.npz
 *.npy
 events.out.tfevents.*
+
+# SwanLab local experiment data
+swanlog/
+.swanlab/

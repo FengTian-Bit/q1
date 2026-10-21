@@ -13,6 +13,8 @@ setup(
         "isaacgym",
         "matplotlib",
         "tensorboard",
+        "swanlab==0.7.20; python_version < '3.9'",
+        "swanlab>=0.10.2,<0.11; python_version >= '3.9'",
         "setuptools==59.5.0",
         "numpy>=1.16.4",
         "numpy<1.20.0",

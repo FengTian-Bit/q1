@@ -7,12 +7,17 @@
 
 ```bash
 # 已安装 Isaac Gym Preview 4 的训练环境，项目根目录执行
+pip install -e .
+swanlab login
 python wheel_legged_gym/scripts/train.py --task=q1 --headless
 python wheel_legged_gym/scripts/play.py --task=q1 --num_envs=1
-tensorboard --logdir=logs/q1
 ```
 
 默认播放支持 W/S 前后速度、A/D 转向、X 停车、空格暂停、F 相机与数字键选机器人；自动评估加 `--play_mode=auto`，包含左右原地转向与行驶转弯。J/L 不绑定功能。
+
+q1 默认将训练曲线和配置记录到 SwanLab 项目 `Q1`，同时保留本地 TensorBoard 备份。
+首次在训练环境安装依赖并登录一次；离线运行加 `--swanlab_mode=offline`，仅本地 TensorBoard 可用 `--logger=tensorboard`。
+默认环境数和训练轮数仍为 4096 / 30000，模型检查点仍在 `logs/q1/<运行目录>/`。
 
 [q1 任务与训练说明](wheel_legged_gym/envs/q1/README.md)。可用已有 q1 检查点继续训练转向；不能直接加载 q1_flat 检查点。
 本地 CPU 接口与 PPO 测试不代表已验证真实仿真性能；实际收敛需训练评估。

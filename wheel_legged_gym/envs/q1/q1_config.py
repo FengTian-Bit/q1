@@ -119,6 +119,12 @@ class Q1CfgPPO(Q1FlatCfgPPO):
         num_encoder_obs = 155  # 31 x 5
 
     class runner(Q1FlatCfgPPO.runner):
+        logger = "swanlab"
+        swanlab_project = "Q1"
+        swanlab_mode = "online"
+        swanlab_workspace = None  # or SWANLAB_WORKSPACE
+        swanlab_group = None  # defaults to stage/run_name
+        swanlab_tags = ["q1"]
         experiment_name = "q1"
         run_name = "turning"
         max_iterations = 30000

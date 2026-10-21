@@ -9,8 +9,9 @@
 在已安装 Isaac Gym Preview 4 和匹配 CUDA/PyTorch 的环境中，从项目根目录执行：
 
 ```bash
+pip install -e .
+swanlab login
 python wheel_legged_gym/scripts/train.py --task=q1 --headless
-tensorboard --logdir=logs/q1
 ```
 
 无需再传环境数或轮数。q1 默认 `--q1_stage=turning`；`--q1_stage=low_speed` 保留原停车/前后直行采样，
@@ -85,6 +86,40 @@ python wheel_legged_gym/scripts/train.py --task=q1 --q1_stage=turning --resume -
 `max_iterations` 表示本次额外训练轮数；默认续训再训练 30000 轮。
 修正后的 runner 在每个检查点中保存已完成的累计轮数，恢复 PPO 与速度估计器优化器状态，文件编号对应累计更新数。
 旧代码保存的中间检查点若把 iter 写成 0，该历史信息无法自动恢复；本次 q1 新训练使用正确编号。
+
+## SwanLab 日志
+
+q1 默认使用 `runner.logger="swanlab"`，项目为 `Q1`，在线模式与四轮足主训练的配置一致。
+SwanLab 控制台会显示实验链接，实验名称沿用本地运行目录名，分组默认使用 run_name（通常为 turning）。
+首次在训练环境安装更新后的项目依赖并运行 `swanlab login`；之后训练命令无需额外日志参数。
+SDK 依赖版本沿用四轮足仓库：Python 3.8 使用 swanlab 0.7.20，Python 3.9+ 使用 0.10.2–0.10.x。
+
+记录全部 `Episode/*`、`Loss/*`、`Policy/*`、`Perf/*`、`Train/*` 标量，包括各项奖励、
+PPO/encoder 损失、学习率、KL、动作噪声、平均回报和回合长度，以及 q1_yaw_mae、
+q1_speed_mae、q1_both_wheel_duty、q1_slip_speed、q1_wheel_saturation、q1_parking_drift 等质量指标。
+回合指标在机器人完成回合后出现，训练刚开始时可能尚无 Episode 曲线。
+
+环境与训练的完整解析配置会写入实验配置。每次新训练或续训创建独立 SwanLab 实验，
+续训时曲线横轴继续使用检查点累计轮数；配置中记录来源检查点、来源 SwanLab 实验 ID 和起始轮数。
+新检查点包含 swanlab_run_id，仍兼容不含该字段的旧 TensorBoard 检查点。
+播放只加载模型，不创建或上传 SwanLab 实验；本次不自动上传模型文件。
+
+本地路径保留：模型和 resolved_config.json 在 `logs/q1/<运行目录>/`，
+SwanLab 数据在该目录的 `swanlog/`，TensorBoard 事件文件也在该运行目录内。
+正常结束或训练异常退出时关闭日志，刷新本地备份并结束 SwanLab 实验。
+
+```bash
+# 不联网、不要求账号登录；日志写入本地 swanlog。
+python wheel_legged_gym/scripts/train.py --task=q1 --headless --swanlab_mode=offline
+# 自定义 SwanLab 项目
+python wheel_legged_gym/scripts/train.py --task=q1 --headless --swanlab_project=my-q1
+# 只使用原来的本地 TensorBoard
+python wheel_legged_gym/scripts/train.py --task=q1 --headless --logger=tensorboard
+tensorboard --logdir=logs/q1
+```
+
+`SWANLAB_MODE` 环境变量优先于模式参数；团队空间可通过 `SWANLAB_WORKSPACE` 或配置中的 swanlab_workspace 设置。
+原 wheel_legged、VMC 和 q1_flat 任务默认仍使用原日志方式，可显式传 `--logger=swanlab` 切换。
 
 ## 改进内容
 
@@ -186,7 +221,7 @@ CSV 每个策略步记录环境 0：目标/实际施加指令、机身速度、r
 诊断在重置前采样，倒地帧不会被重置后的正常状态掩盖。
 JSON 中 mean_absolute_signals 是各信号绝对值的整体均值，停车和运动阶段需根据 CSV 分别统计。
 
-TensorBoard 的 Episode/q1_* 指标记录每个完成回合的速度 MAE、最大腿关节误差的时间均值、
+SwanLab（及本地 TensorBoard 备份）的 Episode/q1_* 指标记录每个完成回合的速度 MAE、最大腿关节误差的时间均值、
 双轮接触占空比、滑移、力矩饱和率、停车偏移和 q1_yaw_mae（rad/s）。这些整体回合指标混合了多类指令，
 应结合 CSV 按停车、直行、原地转向、行驶转弯分别统计，不用停车零值稀释转向误差。
 
@@ -206,6 +241,8 @@ python -m unittest discover -s tests -p 'test_q1*.py' -v
 键盘测试另外覆盖按下/松开、速度限幅、独立指令、机器人选择、暂停、相机、单环境重置和退出保存。
 转向测试覆盖四类采样比例及方向、轮距与差速符号、yaw 限速和停车互斥、转弯/直行参考切换、
 实际施加指令的奖励时序、转向诊断、默认训练阶段和完整自动评估；真实 PPO 也以 turning 配置完成保存/续训测试。
+日志测试使用替身 SDK 验证参数、标量与本地备份一致、配置快照、旧检查点兼容、续训累计轮数和退出清理，
+并在真实 PPO 更新中检查训练/回合/质量指标及实验来源关联；没有使用账号进行在线上传验证。
 新增测试检查地形生成 API 参数、地块分配、楼梯 20 cm 上限、解析坡面的高度/法向/滑移、
 正负地面高度下的轮子离地高度、课程升降级和重置后的高度刷新。
 地形 primitive 和 mesh 转换接口使用记录参数的桩，不等同于真实 Gym mesh/碰撞验证。

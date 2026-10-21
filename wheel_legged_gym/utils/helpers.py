@@ -156,11 +156,22 @@ def update_cfg_from_args(env_cfg, cfg_train, args):
         if args.checkpoint is not None:
             cfg_train.runner.checkpoint = args.checkpoint
 
+        for key in ("logger", "swanlab_mode", "swanlab_project"):
+            value = getattr(args, key, None)
+            if value is not None:
+                setattr(cfg_train.runner, key, value)
+
     return env_cfg, cfg_train
 
 
 def get_args():
     custom_parameters = [
+        {"name": "--logger", "type": str, "choices": ["swanlab", "tensorboard"], "default": None,
+         "help": "Override training logger; q1 defaults to SwanLab."},
+        {"name": "--swanlab_mode", "type": str, "choices": ["online", "offline"], "default": None,
+         "help": "SwanLab mode; SWANLAB_MODE takes precedence."},
+        {"name": "--swanlab_project", "type": str, "default": None,
+         "help": "SwanLab project; q1 defaults to Q1."},
         {
             "name": "--play_mode", "type": str,
             "choices": ["keyboard", "auto"], "default": "keyboard",
