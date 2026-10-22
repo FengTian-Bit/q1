@@ -267,6 +267,40 @@ SwanLab（及本地 TensorBoard 备份）的 Episode/q1_* 指标记录每个完�
 转向验收另看左右方向是否正确、转向段 yaw 误差与机身位移、前进/后退四种转弯组合、停止转向后的恢复，
 以及差速过程中是否抬轮、倒地或持续力矩饱和。
 
+## 固定地形键盘播放 keyboard_play
+
+参考四轮腿 `Dreamwaq-highplatform` 的播放流程和相机控制新增独立入口：
+
+```bash
+# 默认 q1、6 个环境；读取最新训练目录的第 30000 轮模型
+python wheel_legged_gym/scripts/keyboard_play.py --task=q1 --checkpoint=30000
+# 明确指定训练目录，避免加载到别的实验
+python wheel_legged_gym/scripts/keyboard_play.py --task=q1 --load_run=你的训练目录名 --checkpoint=30000
+# 只看上楼，难度 1 对应单级 20 cm（建议先从 0.5 开始）
+python wheel_legged_gym/scripts/keyboard_play.py --terrain=stairs_down --difficulty=1 --num_envs=1 --checkpoint=30000
+```
+
+`--terrain` 支持 mixed、flat、slope_up、slope_down、rough_slope、stairs_up、stairs_down、discrete。
+默认 mixed 按机器人编号依次分配 stairs_down、stairs_up、slope_up、slope_down、rough_slope、flat；
+第 7 个加入 discrete，之后循环。即使只播放 1 个环境也保证有楼梯。
+地形使用训练时相同的 Gym primitives、8 m 地块、3 m 中央平台、分辨率与台阶宽度，固定一个难度，
+不沿用训练日志里的平均课程等级。默认 difficulty=0.5，台阶名义高度 11.25 cm，
+受 5 mm 栅格量化约为 11 cm；difficulty=1 是 20 cm。
+
+**名称和驾驶方向：**原楼梯是金字塔地形，机器人出生在中央。stairs_down 中央低，向外开是上楼；
+stairs_up 中央高，向外开是下楼。坡地也有同样的中心高低关系。默认首先跟随 0 号上楼机器人。
+刚开始静止时看到平台是正常的，按 W 加速，行驶约 1.5 m 到达平台边缘；R 可重置选中的机器人。
+
+W/S 每次增减 0.2 m/s、范围 ±0.8；A/D 每次增减 0.2 rad/s、范围 ±0.6；松键后保持目标。
+X 将当前机器人速度/转向目标归零（仍按加减速限制过渡），Space 暂停/继续，0–8 或 [ / ] 选择机器人，
+F 自由/跟随相机，跟随模式保留鼠标调整的视角和距离，Esc 退出，V 切换显示同步。J/L 不启用。
+指令只作用于当前机器人，其余机器人保留各自目标，切换机器人不会自动停车。
+终端打印当前机器人、地形、目标和实测速度；CSV 仍记录环境 0，摘要 JSON 追加地形分配和难度。
+
+此入口关闭观测噪声、域随机化和随机推力，加载模型后使用确定性策略均值，并打印检查点 std。
+不会启动训练或 SwanLab 新实验。训练配置和原 `play.py` 的地形默认保持原样。
+动作噪声很大或轮力矩长期饱和仍需进一步排查，不能用总奖励或平均地形等级代替上楼验收。
+
 ## 测试和当前验证范围
 
 ```bash

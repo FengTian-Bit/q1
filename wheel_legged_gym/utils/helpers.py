@@ -164,7 +164,7 @@ def update_cfg_from_args(env_cfg, cfg_train, args):
     return env_cfg, cfg_train
 
 
-def get_args(extra_custom_parameters=None):
+def get_args(extra_custom_parameters=None, default_task="anymal_c_flat"):
     custom_parameters = [
         {"name": "--logger", "type": str, "choices": ["swanlab", "tensorboard"], "default": None,
          "help": "Override training logger; q1 defaults to SwanLab."},
@@ -191,7 +191,7 @@ def get_args(extra_custom_parameters=None):
         {
             "name": "--task",
             "type": str,
-            "default": "anymal_c_flat",
+            "default": default_task,
             "help": "Resume training or start testing from a checkpoint. Overrides config file if provided.",
         },
         {

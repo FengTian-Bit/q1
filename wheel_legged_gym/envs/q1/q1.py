@@ -38,6 +38,21 @@ class Q1Terrain(Terrain):
                 self.add_terrain_to_map(self.make_terrain(choice, difficulty), row, col)
 
     def randomized_terrain(self):
+        layout = getattr(self.cfg, "playback_layout", None)
+        if layout:
+            if len(layout) != self.cfg.num_cols or self.cfg.num_rows != 1:
+                raise ValueError("Playback needs one explicit terrain column per robot")
+            difficulty = self.cfg.playback_difficulty
+            if not 0 <= difficulty <= 1:
+                raise ValueError("Playback difficulty must be in [0, 1]")
+            for col, name in enumerate(layout):
+                index = self.cfg.terrain_names.index(name)
+                lower = 0.0 if index == 0 else self.proportions[index - 1]
+                if self.cfg.terrain_proportions[index] <= 0:
+                    raise ValueError("Playback terrain must have a positive proportion")
+                choice = (lower + self.proportions[index]) / 2
+                self.add_terrain_to_map(self.make_terrain(choice, difficulty), 0, col)
+            return
         # Preserve terrain-type coverage even when level curriculum is disabled.
         for col in range(self.cfg.num_cols):
             for row in range(self.cfg.num_rows):

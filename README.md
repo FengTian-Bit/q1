@@ -11,7 +11,14 @@ pip install -e .
 swanlab login
 python wheel_legged_gym/scripts/train.py --task=q1 --headless
 python wheel_legged_gym/scripts/play.py --task=q1 --num_envs=1
+python wheel_legged_gym/scripts/keyboard_play.py --task=q1 --checkpoint=30000
 ```
+
+新增 `keyboard_play.py` 默认 6 个环境，固定分配两种楼梯、两种坡地、粗糙坡地和平地，默认难度 0.5。
+0 号为 `stairs_down` 凹坑地形，从中央向外行驶是上楼；1 号为 `stairs_up` 山丘地形，向外行驶是下楼。
+保留训练时 3 m 中央平台，开出约 1.5 m 才碰到台阶。`--difficulty=1` 测试 20 cm 台阶，
+`--terrain=stairs_down --num_envs=1` 可单独测试上楼。可用 `--load_run=训练目录名` 明确指定模型来源。
+播放覆盖配置不改训练配置；具体用法见 [Q1 说明](wheel_legged_gym/envs/q1/README.md)。
 
 默认播放支持 W/S 前后速度、A/D 转向、X 停车、空格暂停、F 相机与数字键选机器人；自动评估加 `--play_mode=auto`，包含左右原地转向与行驶转弯。J/L 不绑定功能。
 

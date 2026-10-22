@@ -18,6 +18,7 @@ class Q1Keyboard:
         self.selected = 0
         self.paused = False
         self.free_camera = False
+        self.camera_offset = [0.0, 2.0, 1.0]
         self.enabled = False
         self.old_render = env.render
         self.old_handler = getattr(env, "_extra_viewer_action_handler", None)
@@ -85,15 +86,30 @@ class Q1Keyboard:
             self.env.obs_buf[ids] = self.env.compute_proprioception_observations()[ids]
         else:
             return
-        print("Robot {} target vx={:+.2f} m/s yaw={:+.2f} rad/s".format(
-            self.selected, self.speed[self.selected].item(), self.yaw_rate[self.selected].item()))
+        print("Robot {} terrain={} target vx={:+.2f} m/s yaw={:+.2f} rad/s".format(
+            self.selected, self.terrain_name(), self.speed[self.selected].item(), self.yaw_rate[self.selected].item()))
+
+    def terrain_name(self):
+        layout = getattr(self.env.cfg.terrain, "playback_layout", None)
+        if layout:
+            column = int(self.env.terrain_types[self.selected].item())
+            return layout[column]
+        return self.env.cfg.terrain.mesh_type
 
     def render(self):
+        selected_before = self.selected
+        following_before = not self.free_camera
         if not self.free_camera:
             target = self.env.root_states[self.selected, :3].detach().cpu().tolist()
-            camera = [target[0], target[1]+2.0, target[2]+1.0]
+            camera = [value+offset for value, offset in zip(target, self.camera_offset)]
             self.env.set_camera(camera, target)
         self.old_render()
+        # Match Dreamwaq: retain mouse orbit/zoom while following a robot.
+        if (following_before and not self.free_camera and self.selected == selected_before
+                and hasattr(self.env.gym, "get_viewer_camera_transform")):
+            p = self.env.gym.get_viewer_camera_transform(self.env.viewer, None).p
+            target = self.env.root_states[self.selected, :3].detach().cpu().tolist()
+            self.camera_offset = [value-origin for value, origin in zip((p.x, p.y, p.z), target)]
 
     def apply(self):
         self.env.set_command_target(self.speed, self.yaw_rate)

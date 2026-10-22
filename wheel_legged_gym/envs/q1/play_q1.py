@@ -15,8 +15,10 @@ from .keyboard import Q1Keyboard
 from .q1_config import configure_q1_stage
 
 
-def play_q1(args):
+def play_q1(args, playback_configure=None):
     cfg, train_cfg = task_registry.get_cfgs("q1")
+    if playback_configure is not None:
+        cfg = playback_configure(cfg, args)
     args.q1_stage = args.q1_stage or "turning"
     configure_q1_stage(cfg, args.q1_stage)
     cfg.env.num_envs = 16 if args.num_envs is None else args.num_envs
@@ -36,6 +38,9 @@ def play_q1(args):
     train_cfg.runner.resume = True
     runner, train_cfg = task_registry.make_alg_runner(env, args=args, train_cfg=train_cfg)
     policy = runner.get_inference_policy(device=env.device)
+    if playback_configure is not None:
+        std = runner.alg.actor_critic.std.detach().cpu().tolist()
+        print("Checkpoint action noise std:", std, "; playback uses deterministic policy means.")
     output = os.path.join(WHEEL_LEGGED_GYM_ROOT_DIR, "logs", train_cfg.runner.experiment_name, "exported")
     export_policy_as_jit(runner.alg.actor_critic, os.path.join(output, "policies"))
     output = os.path.join(output, "evaluations")
@@ -85,8 +90,9 @@ def play_q1(args):
                     if (count-1) % int(1/env.dt) == 0:
                         selected = controls.selected if controls is not None else 0
                         viewed = env.last_diagnostics[selected]
-                        print("t={:.1f}s robot={} target={:+.2f} cmd={:+.2f} vx={:+.3f} yaw_target={:+.2f} yaw={:+.3f} h={:.3f} env0_resets={}".format(
-                            (count-1)*env.dt, selected, viewed[0].item(), viewed[1].item(), viewed[3].item(),
+                        terrain = controls.terrain_name() if controls is not None else cfg.terrain.mesh_type
+                        print("t={:.1f}s robot={} terrain={} target={:+.2f} cmd={:+.2f} vx={:+.3f} yaw_target={:+.2f} yaw={:+.3f} h={:.3f} env0_resets={}".format(
+                            (count-1)*env.dt, selected, terrain, viewed[0].item(), viewed[1].item(), viewed[3].item(),
                             env.command_targets[selected, 1].item(), viewed[5].item(), viewed[8].item(), resets
                         ))
     except SystemExit:
@@ -101,6 +107,8 @@ def play_q1(args):
                        "schedule_vx_yaw": schedule if mode == "auto" else None,
                        "segment_s": segment_s if mode == "auto" else None,
                        "terrain_mesh": cfg.terrain.mesh_type,
+                       "terrain_layout": getattr(cfg.terrain, "playback_layout", None),
+                       "terrain_difficulty": getattr(cfg.terrain, "playback_difficulty", None),
                        "load_run": args.load_run, "checkpoint": args.checkpoint,
                        "mean_absolute_signals": dict(zip(DIAGNOSTIC_FIELDS, (accumulated/max(count, 1)).cpu().tolist()))}, stream, indent=2)
         print("Q1 evaluation CSV:", stem+".csv")
