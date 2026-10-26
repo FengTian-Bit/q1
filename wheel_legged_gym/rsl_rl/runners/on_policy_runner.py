@@ -157,6 +157,8 @@ class OnPolicyRunner:
         start_iter = self.current_learning_iteration
         tot_iter = start_iter + num_learning_iterations
         for it in range(self.current_learning_iteration, tot_iter):
+            if hasattr(self.env, "set_training_iteration"):
+                self.env.set_training_iteration(it)
             start = time.time()
             # Rollout
             with torch.inference_mode():
@@ -342,6 +344,8 @@ class OnPolicyRunner:
             if self.alg.extra_optimizer is not None and extra_state is not None:
                 self.alg.extra_optimizer.load_state_dict(extra_state)
         self.current_learning_iteration = loaded_dict["iter"]
+        if hasattr(self.env, "set_training_iteration"):
+            self.env.set_training_iteration(self.current_learning_iteration)
         self.loaded_checkpoint = os.path.abspath(path)
         self.loaded_swanlab_run_id = loaded_dict.get("swanlab_run_id")
         return loaded_dict["infos"]

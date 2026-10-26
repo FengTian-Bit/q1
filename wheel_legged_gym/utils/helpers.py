@@ -182,6 +182,11 @@ def get_args(extra_custom_parameters=None, default_task="anymal_c_flat"):
             "help": "q1 playback duration in simulation seconds; 0 means unlimited keyboard / 72 s auto.",
         },
         {
+            "name": "--ctbc_stage", "type": str,
+            "choices": ["single", "stairs", "robust"], "default": None,
+            "help": "q1_ctbc curriculum: single step (default), stairs, or randomized stairs.",
+        },
+        {
             "name": "--q1_stage",
             "type": str,
             "choices": ["balance", "low_speed", "turning"],

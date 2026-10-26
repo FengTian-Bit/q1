@@ -266,11 +266,15 @@ class Q1Tests(unittest.TestCase):
         namespace = dict(NS)
         load_code("wheel_legged_gym/envs/wheel_legged_vmc/wheel_legged_vmc_config.py", namespace)
         load_code("wheel_legged_gym/envs/wheel_legged_vmc_flat/wheel_legged_vmc_flat_config.py", namespace)
+        load_code("wheel_legged_gym/envs/q1_ctbc/q1_ctbc_config.py", namespace)
+        load_code("wheel_legged_gym/envs/q1_ctbc/q1_ctbc.py", namespace)
         namespace["LeggedRobotVMC"] = object
         namespace["task_registry"] = SimpleNamespace(register=lambda name, cls, cfg, train: registered.update({name: (cls, cfg, train)}))
         load_code("wheel_legged_gym/envs/__init__.py", namespace)
-        self.assertEqual(set(registered), {"wheel_legged", "wheel_legged_vmc", "wheel_legged_vmc_flat", "q1_flat", "q1"})
+        self.assertEqual(set(registered), {"wheel_legged", "wheel_legged_vmc", "wheel_legged_vmc_flat", "q1_flat", "q1", "q1_ctbc"})
         self.assertIs(registered["q1_flat"][0], Q1Flat)
+        self.assertIs(registered["q1"][0], NS["Q1"])
+        self.assertIs(registered["q1_ctbc"][0], namespace["Q1CTBC"])
         self.assertEqual(registered["wheel_legged"][1].asset.name, "WheelLegged")
 
     def test_playback_runs_across_inference_mode_frames(self):

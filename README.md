@@ -33,6 +33,21 @@ q1 默认将训练曲线和配置记录到 SwanLab 项目 `Q1`，同时保留本
 [q1 任务与训练说明](wheel_legged_gym/envs/q1/README.md)。可用已有 q1 检查点继续训练转向；不能直接加载 q1_flat 检查点。
 本地 CPU 接口与 PPO 测试不代表已验证真实仿真性能；实际收敛需训练评估。
 
+## q1_ctbc 盲上楼梯专项
+
+新增独立任务 `q1_ctbc`：以定向单台阶训练接触后交替抬腿，提供训练前馈、累计轮数退火、
+真实落台成功判据及专项课程。默认 4096 环境、30000 轮，先学习 2.5–8 cm 单阶，
+再通过 `--ctbc_stage=stairs` 训练 4–12 cm 连续三阶。`q1`、`q1_flat` 保留原配置。
+
+```bash
+python wheel_legged_gym/scripts/train.py --task=q1_ctbc --ctbc_stage=single --headless
+# RUN_NAME 和 CHECKPOINT 替换为本任务的实际运行目录和模型编号。
+python wheel_legged_gym/scripts/evaluate_q1_ctbc.py --load_run=RUN_NAME --checkpoint=CHECKPOINT --headless --heights=2.5,5,8 --guidance=both
+```
+
+正式验收使用 `--guidance=off` 的纯网络成功率；CPU 测试尚不能证明物理上楼能力。
+阶段续训、参数、评估单位与验证范围见 [CTBC 任务说明](wheel_legged_gym/envs/q1_ctbc/README.md)。
+
 ---
 
 ## q1_flat 基线与原项目说明
