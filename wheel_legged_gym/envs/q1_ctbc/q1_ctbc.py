@@ -268,6 +268,14 @@ class Q1CTBC(Q1):
             episode["ctbc_swing_timeouts"] = swing_timeouts.mean()
             episode["ctbc_feedforward_weight"] = self.ctbc_feedforward_weight
 
+    def _reward_leg_symmetry(self):
+        """Release symmetry immediately when either wheel hits an obstacle."""
+        force_xy = self.contact_forces[:, self.feet_indices, :2].norm(dim=-1)
+        # Match ContactGuidance's horizontal force and strict > threshold,
+        # independently of its debounce, swing latch and guidance mode.
+        collision = (force_xy > self.cfg.ctbc.contact_threshold).any(dim=1)
+        return super()._reward_leg_symmetry() * (~collision)
+
     def _reward_ctbc_target(self):
         actual = self.dof_pos[:, self.leg_dof_indices]
         target = self.default_dof_pos[:, self.leg_dof_indices]+self.ctbc_reference

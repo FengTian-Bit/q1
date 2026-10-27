@@ -62,7 +62,7 @@ def _configure_stage(cfg, stage):
 
 
 def prepare_ctbc_training(env_cfg, train_cfg, args, root_dir, get_load_path):
-    """Restore a checkpoint config, then apply an explicitly changed stage.
+    """Restore a checkpoint config, then apply any explicitly requested stage.
 
     Other CLI overrides remain untouched for the registry's standard override
     mechanism. Resolving the checkpoint now prevents a later "latest" lookup
@@ -95,9 +95,9 @@ def prepare_ctbc_training(env_cfg, train_cfg, args, root_dir, get_load_path):
         apply_config(env_cfg, snapshot["env"])
         apply_config(train_cfg, snapshot["train"])
         stage = requested_stage or saved_stage
-        # Same-stage resumes preserve every saved tuning parameter, including
-        # annealing horizons, action scales and randomization adjustments.
-        if requested_stage is not None and requested_stage != saved_stage:
+        # An explicit stage reapplies current curriculum presets even when its
+        # name is unchanged. Omitting it preserves all saved tuning parameters.
+        if requested_stage is not None:
             _configure_stage(env_cfg, stage)
         args.load_run = str(checkpoint.parent)
         args.checkpoint = int(match.group(1))

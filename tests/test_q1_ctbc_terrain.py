@@ -156,7 +156,7 @@ class CTBCTerrainTests(unittest.TestCase):
         self.assertEqual(cfg.commands.ranges.ang_vel_yaw, [0.0, 0.0])
         self.assertEqual(train.runner.max_iterations, 30000)
         self.assertFalse(train.runner.periodic_video.enabled)
-        self.assertEqual(cfg.rewards.rough_leg_symmetry_weight, 0.0)
+        self.assertEqual(cfg.rewards.rough_leg_symmetry_weight, 1.0)
         self.assertEqual(cfg.rewards.scales.ctbc_same_x, 0.0)
         self.assertEqual((cfg.ctbc.contact_frames, cfg.ctbc.feedforward_hold_iterations,
                           cfg.ctbc.feedforward_anneal_iterations), (3, 3000, 12000))

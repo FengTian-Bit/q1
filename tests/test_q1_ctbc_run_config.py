@@ -97,16 +97,30 @@ class CTBCRunConfigTests(unittest.TestCase):
         self.assertTrue(train.runner.resume)
         resolver.assert_called_once_with(str(run / "logs" / "q1_ctbc"), load_run=-1, checkpoint=-1)
 
-    def test_explicit_same_stage_does_not_reset_user_adjustments(self):
-        run, checkpoint = self.fixture(snapshot("robust"))
+    def test_explicit_same_stage_reapplies_current_curriculum_after_restore(self):
+        run, checkpoint = self.fixture(snapshot("stairs"))
         env, train = configs()
-        args = arguments(ctbc_stage="robust", run_name="my_refinement")
-        with patch.object(CONFIG, "_configure_stage") as stage:
+        args = arguments(ctbc_stage="stairs", run_name="stairs18")
+
+        def updated_curriculum(cfg, stage):
+            # Saved geometry is restored first, then current stage settings win.
+            self.assertEqual(cfg.terrain.riser_height_range, [.045, .115])
+            configure_stage(cfg, stage)
+            cfg.terrain.riser_height_range = [.08, .18]
+
+        with patch.object(CONFIG, "_configure_stage", side_effect=updated_curriculum) as stage:
             CONFIG.prepare_ctbc_training(env, train, args, run, Mock(return_value=str(checkpoint)))
-        stage.assert_not_called()
-        self.assertEqual(args.run_name, "my_refinement")
-        self.assertEqual(train.runner.run_name, "my_refinement")
-        self.assertEqual(env.domain_rand.friction_range, [.65, 1.05])
+        stage.assert_called_once_with(env, "stairs")
+        self.assertEqual(env.terrain.riser_height_range, [.08, .18])
+        self.assertEqual(env.commands.ranges.lin_vel_x, [.15, .3])
+        self.assertEqual(args.run_name, "stairs18")
+        self.assertEqual(train.runner.run_name, "stairs18")
+        # Only the stage preset is reapplied; checkpoint/model tuning survives.
+        self.assertEqual(env.control.leg_action_scales, [.55, .95, .55, .95])
+        self.assertEqual(env.ctbc.feedforward_hold_iterations, 4321)
+        self.assertEqual(env.ctbc.feedforward_anneal_iterations, 23456)
+        self.assertEqual(train.policy.actor_hidden_dims, [128, 128])
+        self.assertEqual(train.algorithm.learning_rate, .000123)
 
     def test_explicit_different_stage_changes_curriculum_after_restore(self):
         run, checkpoint = self.fixture(snapshot("single"))

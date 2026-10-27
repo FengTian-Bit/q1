@@ -71,9 +71,10 @@ class Q1CTBCCfg(Q1Cfg):
 
     class rewards(Q1Cfg.rewards):
         tracking_sigma = 0.04
-        rough_leg_symmetry_weight = 0.0
+        rough_leg_symmetry_weight = 1.0
 
         class scales(Q1Cfg.rewards.scales):
+            leg_symmetry = -0.10
             speed_error = -0.1
             ctbc_target = 1.0
             ctbc_clearance = 1.0

@@ -48,6 +48,37 @@ def place_at_goal(env):
 
 
 class Q1CTBCTests(unittest.TestCase):
+    def test_symmetry_is_enabled_and_gated_by_either_wheels_horizontal_force(self):
+        env = ctbc_env(6, permutation=[5, 2, 4, 0, 3, 1])
+        env._flat_terrain_mask = lambda: torch.tensor([True, False, False, False, False, False])
+        env.dof_pos[:, env.leg_dof_indices[0]] += 0.3
+        self.assertEqual(env.cfg.rewards.rough_leg_symmetry_weight, 1.0)
+        self.assertEqual(env.cfg.rewards.scales.leg_symmetry, -0.10)
+        baseline = NS["Q1"]._reward_leg_symmetry(env)
+        self.assertTrue((baseline > 0).all())
+        self.assertIn("leg_symmetry", env.reward_names)
+        self.assertLess(env.reward_scales["leg_symmetry"], 0.0)
+
+        # Use a non-default threshold to verify the existing setting is reused.
+        env.cfg.ctbc.contact_threshold = 10.0
+        env.contact_forces[:, env.feet_indices, 2] = 1000.0
+        env.contact_forces[0, env.feet_indices[0], 0] = 11.0
+        env.contact_forces[1, env.feet_indices[1], 1] = -11.0
+        env.contact_forces[2, env.feet_indices[0], :2] = torch.tensor([8.0, 8.0])
+        env.contact_forces[3, env.feet_indices[0], :2] = torch.tensor([6.0, 8.0])
+        env.contact_forces[4, env.feet_indices[1], 0] = 9.0
+        expected = baseline * torch.tensor([0, 0, 0, 1, 1, 1])
+        for mode in ("on", "off"):
+            env.set_guidance_mode(mode)
+            torch.testing.assert_close(env._reward_leg_symmetry(), expected)
+
+        # Restores immediately after force disappears, even during a latched swing.
+        env.guidance.active_leg[:] = 0
+        env.contact_forces[:, env.feet_indices, :2] = 0.0
+        torch.testing.assert_close(env._reward_leg_symmetry(), baseline)
+        env.dof_pos[:, env.leg_dof_indices] = env.default_dof_pos[:, env.leg_dof_indices]
+        torch.testing.assert_close(env._reward_leg_symmetry(), torch.zeros(6))
+
     def test_dimensions_and_teacher_state_are_absent_from_actor(self):
         env = ctbc_env()
         env.step(torch.zeros(2, 6))
