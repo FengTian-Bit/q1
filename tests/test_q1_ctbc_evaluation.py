@@ -1,5 +1,6 @@
 """Evaluation accounting tests, independent of Isaac Gym and contact simulation."""
 import importlib.util
+import builtins
 from contextlib import nullcontext, redirect_stdout
 import io
 import json
@@ -22,6 +23,34 @@ RUN_SPEC.loader.exec_module(RUN_CONFIG)
 
 
 class CTBCEvaluationTests(unittest.TestCase):
+    def test_cli_initializes_registry_before_importing_utils(self):
+        # A preloaded/mock registry hides the standalone CLI cycle. Reproduce
+        # the cold-start dependency: utils cannot finish until envs registers.
+        imports = []
+        arguments = SimpleNamespace(task="q1_ctbc")
+        original_import = builtins.__import__
+
+        def runtime_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if name == "isaacgym":
+                imports.append(name)
+                return SimpleNamespace()
+            if name == "wheel_legged_gym.envs":
+                self.assertIn("isaacgym", imports)
+                imports.append(name)
+                return SimpleNamespace()
+            if name == "wheel_legged_gym.utils":
+                if "wheel_legged_gym.envs" not in imports:
+                    raise ImportError("task_registry is partially initialized")
+                imports.append(name)
+                return SimpleNamespace(get_args=lambda **kwargs: arguments)
+            return original_import(name, globals, locals, fromlist, level)
+
+        with patch("builtins.__import__", side_effect=runtime_import), \
+                patch.object(EVAL, "evaluate", return_value={"complete": True}) as evaluate:
+            EVAL.main()
+        evaluate.assert_called_once_with(arguments)
+        self.assertEqual(imports, ["isaacgym", "wheel_legged_gym.envs", "wheel_legged_gym.utils"])
+
     def test_height_cli_has_explicit_centimetres_and_rejects_invalid_values(self):
         self.assertEqual(EVAL.parse_heights("2.5, 5,12"), [0.025, 0.05, 0.12])
         for value in ("", "0", "-5", "nan", "inf", "5,,8", "5cm"):

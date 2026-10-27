@@ -241,6 +241,9 @@ def evaluate(args):
 
 def main():
     import isaacgym  # noqa: F401
+    # Register environments before utils imports TaskRegistry, which itself
+    # imports envs.base. Match the working train/play entry-point order.
+    import wheel_legged_gym.envs  # noqa: F401
     from wheel_legged_gym.utils import get_args
     args = get_args(extra_custom_parameters=evaluation_arguments(), default_task="q1_ctbc")
     report = evaluate(args)
