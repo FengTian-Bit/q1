@@ -47,6 +47,9 @@ class Q1CTBCCfg(Q1Cfg):
     class control(Q1Cfg.control):
         # Policy leg order: L thigh, L calf, R thigh, R calf.
         leg_action_scales = [0.5, 0.9, 0.5, 0.9]
+        # Optional physical offset limits. None keeps the legacy +/-1 action
+        # range; increasing limits does not change an old action's radian value.
+        leg_action_limits = None
 
     class ctbc:
         stage = "single"
@@ -61,6 +64,13 @@ class Q1CTBCCfg(Q1Cfg):
         feedforward_initial = 1.0
         feedforward_hold_iterations = 3000
         feedforward_anneal_iterations = 12000
+        feedforward_start_iteration = 0
+        feedforward_ramp_iterations = 0
+        guide_lift_height_range = None
+        guide_lift_ratio = 0.8
+        min_landing_rise = 0.0
+        clearance_overshoot_allowance = 0.0
+        target_reward_anneals = False
         trigger_enabled = True
         feedforward_enabled = True
         pure_policy = False
@@ -96,7 +106,7 @@ class Q1CTBCCfgPPO(Q1CfgPPO):
 
 def configure_ctbc_stage(cfg, stage):
     """Apply a complete stage, so switching back also removes robust settings."""
-    if stage not in ("single", "stairs", "robust"):
+    if stage not in ("single", "stairs", "robust", "stairs20"):
         raise ValueError("Unknown CTBC stage: {}".format(stage))
     cfg.ctbc.stage = stage
     cfg.commands.ranges.lin_vel_x = [0.15, 0.3]
@@ -107,6 +117,37 @@ def configure_ctbc_stage(cfg, stage):
     cfg.terrain.riser_height_range = [0.025, 0.08] if stage == "single" else [0.04, 0.12]
     cfg.terrain.tread_width_range = [0.5, 0.5] if stage == "single" else [0.5, 0.35]
     cfg.terrain.num_steps = 1 if stage == "single" else 3
+    high = stage == "stairs20"
+    cfg.control.leg_action_limits = [0.7, 1.35, 0.7, 1.35] if high else None
+    cfg.normalization.clip_actions = max(
+        [1.0] + [limit/scale for limit, scale in zip(
+            cfg.control.leg_action_limits or cfg.control.leg_action_scales,
+            cfg.control.leg_action_scales)])
+    cfg.ctbc.guide_lift_height_range = [0.08, 0.16] if high else None
+    cfg.ctbc.swing_duration = 0.8 if high else 0.6
+    cfg.ctbc.min_swing_time = 0.4 if high else 0.3
+    cfg.ctbc.min_landing_rise = 0.02 if high else 0.0
+    cfg.ctbc.clearance_overshoot_allowance = 0.06 if high else 0.0
+    cfg.ctbc.target_reward_anneals = high
+    cfg.ctbc.feedforward_ramp_iterations = min(1000, cfg.ctbc.feedforward_hold_iterations) if high else 0
+    cfg.rewards.scales.ctbc_target = 0.3 if high else 1.0
+    if high:
+        # The lower row reproduces the validated 8 cm guide / 10 cm stair pair.
+        # Only the training teacher uses terrain height; actor inputs stay blind.
+        cfg.terrain.riser_height_range = [0.10, 0.20]
+        cfg.terrain.tread_width_range = [0.50, 0.40]
+        cfg.terrain.num_rows = 6
+        cfg.terrain.max_init_terrain_level = 0
+        cfg.commands.max_forward_speed = 0.20
+        cfg.commands.minimum_motion_speed = 0.15
+        cfg.commands.ranges.lin_vel_x = [0.15, 0.20]
+        cfg.ctbc.feedforward_enabled = True
+        cfg.ctbc.trigger_enabled = True
+        cfg.ctbc.pure_policy = False
+        cfg.ctbc.feedforward_initial = 1.0
+    else:
+        cfg.commands.max_forward_speed = 0.30
+        cfg.commands.minimum_motion_speed = 0.15
     # These are conservative Q1 starting ranges, not claimed paper parameters.
     robust = stage == "robust"
     for name in ("randomize_friction", "randomize_base_mass", "randomize_inertia",

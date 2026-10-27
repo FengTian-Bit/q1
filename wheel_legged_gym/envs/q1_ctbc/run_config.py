@@ -5,7 +5,7 @@ from pathlib import Path
 import re
 
 
-STAGES = ("single", "stairs", "robust")
+STAGES = ("single", "stairs", "robust", "stairs20")
 
 
 def apply_config(target, values):
@@ -47,7 +47,10 @@ def validate_ctbc_snapshot(snapshot):
         raise ValueError(error + "env.control.leg_action_scales must contain four finite positive values")
     stage = env["ctbc"].get("stage")
     if stage not in STAGES:
-        raise ValueError(error + "env.ctbc.stage must be single, stairs or robust")
+        raise ValueError(error + "env.ctbc.stage must be single, stairs, robust or stairs20")
+    start_iteration = env["ctbc"].get("feedforward_start_iteration", 0)
+    if isinstance(start_iteration, bool) or not isinstance(start_iteration, int) or start_iteration < 0:
+        raise ValueError(error + "env.ctbc.feedforward_start_iteration must be a nonnegative integer")
     if snapshot.get("stage", stage) != stage:
         raise ValueError(error + "top-level stage and env.ctbc.stage disagree")
     if not isinstance(train.get("runner"), dict):
@@ -59,6 +62,22 @@ def _configure_stage(cfg, stage):
     # Keep snapshot validation and tests independent of Isaac Gym imports.
     from .q1_ctbc_config import configure_ctbc_stage
     return configure_ctbc_stage(cfg, stage)
+
+
+def _load_checkpoint_iteration(checkpoint):
+    """Read the saved update count when entering a new high-stair curriculum.
+
+    The filename is not authoritative: older checkpoints can have a saved
+    iteration that differs from their name. Restrict deserialization to tensors
+    and plain metadata rather than enabling arbitrary checkpoint objects.
+    """
+    import torch
+
+    state = torch.load(str(checkpoint), map_location="cpu", weights_only=True)
+    iteration = state.get("iter") if isinstance(state, dict) else None
+    if isinstance(iteration, bool) or not isinstance(iteration, int) or iteration < 0:
+        raise ValueError("Cannot enter stairs20: checkpoint 'iter' must be a nonnegative integer")
+    return iteration
 
 
 def prepare_ctbc_training(env_cfg, train_cfg, args, root_dir, get_load_path):
@@ -94,11 +113,31 @@ def prepare_ctbc_training(env_cfg, train_cfg, args, root_dir, get_load_path):
         saved_stage = validate_ctbc_snapshot(snapshot)
         apply_config(env_cfg, snapshot["env"])
         apply_config(train_cfg, snapshot["train"])
+        if "feedforward_start_iteration" not in snapshot["env"]["ctbc"]:
+            # Legacy snapshots predate a stage-relative guidance clock.
+            env_cfg.ctbc.feedforward_start_iteration = 0
         stage = requested_stage or saved_stage
+        saved_start = getattr(env_cfg.ctbc, "feedforward_start_iteration", 0)
         # An explicit stage reapplies current curriculum presets even when its
         # name is unchanged. Omitting it preserves all saved tuning parameters.
         if requested_stage is not None:
             _configure_stage(env_cfg, stage)
+        if stage == "stairs20":
+            if saved_stage != "stairs20":
+                # Start a fresh guidance schedule at the loaded policy's real
+                # cumulative update, without changing its model/action contract.
+                entry_iteration = _load_checkpoint_iteration(checkpoint)
+                env_cfg.ctbc.feedforward_start_iteration = entry_iteration
+                train_cfg.runner.ctbc_guidance_entry_checkpoint_iteration = entry_iteration
+            else:
+                # Explicit same-stage requests may refresh terrain presets, but
+                # must not restart guidance after every training interruption.
+                env_cfg.ctbc.feedforward_start_iteration = saved_start
+        elif saved_stage == "stairs20":
+            # Returning to an earlier curriculum restores its original global
+            # cumulative-iteration schedule rather than inheriting a high-stage
+            # relative clock. Switching between old stages still never restarts.
+            env_cfg.ctbc.feedforward_start_iteration = 0
         args.load_run = str(checkpoint.parent)
         args.checkpoint = int(match.group(1))
         train_cfg.runner.load_run = args.load_run
@@ -107,7 +146,10 @@ def prepare_ctbc_training(env_cfg, train_cfg, args, root_dir, get_load_path):
     else:
         stage = requested_stage or "single"
         _configure_stage(env_cfg, stage)
+        if stage == "stairs20":
+            env_cfg.ctbc.feedforward_start_iteration = 0
     args.ctbc_stage = stage
+    train_cfg.runner.ctbc_guidance_start_iteration = getattr(env_cfg.ctbc, "feedforward_start_iteration", 0)
     args.run_name = getattr(args, "run_name", None) or stage
     train_cfg.runner.run_name = args.run_name
     return env_cfg, train_cfg

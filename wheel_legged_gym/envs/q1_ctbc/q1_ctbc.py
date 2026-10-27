@@ -50,6 +50,56 @@ class Q1CTBC(Q1):
             self.ctbc_step_counts = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
             self.ctbc_first_riser_x = self.env_origins[:, 0] + 0.7
             self.ctbc_goal_x = self.env_origins[:, 0] + self.cfg.terrain.flat_goal_distance
+        if hasattr(self, "guidance"):
+            self._update_guide_amplitudes()
+
+    def _update_guide_amplitudes(self):
+        """Map training-only stair height to a reachable, nominal IK instruction.
+
+        Preserve the nominal wheel X coordinate. The guide remains a heuristic;
+        actual clearance also depends on body motion and actuator tracking.
+        """
+        cfg = self.cfg.ctbc
+        bounds = getattr(cfg, "guide_lift_height_range", None)
+        angles = self.cfg.init_state.default_joint_angles
+        hip0, knee0 = angles["L_thigh_joint"], angles["L_calf_joint"]
+        l1, l2 = self.cfg.asset.l1, self.cfg.asset.l2
+        q0 = torch.tensor([hip0, knee0], device=self.device)
+        x0 = -l1*torch.sin(q0[0])-l2*torch.sin(q0.sum())
+        z0 = -l1*torch.cos(q0[0])-l2*torch.cos(q0.sum())
+        if bounds is None:
+            amplitudes = torch.tensor([cfg.hip_amplitude, cfg.knee_amplitude], device=self.device)
+            peak = q0+amplitudes
+            lift = -l1*torch.cos(peak[0])-l2*torch.cos(peak.sum())-z0
+            self.ctbc_guide_lift_heights = lift.expand(self.num_envs).clone()
+            amplitudes = amplitudes.expand(self.num_envs, -1)
+        else:
+            if len(bounds) != 2 or not 0 < bounds[0] <= bounds[1]:
+                raise ValueError("CTBC guide lift range must contain positive ordered heights")
+            # The user's validated 8 cm guide / 10 cm riser pair is row zero.
+            ratio = float(getattr(cfg, "guide_lift_ratio", 0.8))
+            if not 0 < ratio <= 1:
+                raise ValueError("CTBC guide lift ratio must be in (0, 1]")
+            lift = (self.ctbc_riser_heights.float()*ratio).clamp(bounds[0], bounds[1])
+            z = z0+lift
+            cosine = (x0.square()+z.square()-l1*l1-l2*l2)/(2*l1*l2)
+            if torch.any(cosine.abs() > 1.0) or torch.any(z >= 0):
+                raise ValueError("CTBC lift reference is outside the nominal leg workspace")
+            knee = -torch.acos(cosine)
+            hip = torch.atan2(-x0.expand_as(z), -z)-torch.atan2(l2*torch.sin(knee), l1+l2*torch.cos(knee))
+            amplitudes = torch.stack((hip-hip0, knee-knee0), dim=1)
+            self.ctbc_guide_lift_heights = lift
+            available = self.ctbc_leg_limits.reshape(2, 2).amin(dim=0)
+            if torch.any(amplitudes.abs() > available+1e-6):
+                raise ValueError("CTBC lift instruction exceeds configured leg offset limits")
+            if hasattr(self, "dof_pos_limits"):
+                limits = self.dof_pos_limits[self.leg_dof_indices].reshape(2, 2, 2)
+                lower = limits[..., 0].amax(dim=0)+0.05
+                upper = limits[..., 1].amin(dim=0)-0.05
+                peak = amplitudes+q0
+                if torch.any(peak < lower-1e-6) or torch.any(peak > upper+1e-6):
+                    raise ValueError("CTBC lift instruction exceeds joint target margins")
+        self.guidance.set_amplitudes(torch.arange(self.num_envs, device=self.device), amplitudes)
 
     def _init_buffers(self):
         super()._init_buffers()
@@ -57,8 +107,19 @@ class Q1CTBC(Q1):
         self.ctbc_training_iteration = 0
         self._guidance_mode = "off" if self.cfg.ctbc.pure_policy else "annealed"
         self.ctbc_leg_scales = torch.tensor(self.cfg.control.leg_action_scales, device=self.device)
-        if self.ctbc_leg_scales.shape != (4,) or torch.any(self.ctbc_leg_scales <= 0):
+        if (self.ctbc_leg_scales.shape != (4,) or not torch.isfinite(self.ctbc_leg_scales).all()
+                or torch.any(self.ctbc_leg_scales <= 0)):
             raise ValueError("CTBC requires four positive leg action scales")
+        limits = getattr(self.cfg.control, "leg_action_limits", None)
+        self.ctbc_leg_limits = (self.ctbc_leg_scales.clone() if limits is None
+                                else torch.tensor(limits, device=self.device))
+        if (self.ctbc_leg_limits.shape != (4,) or not torch.isfinite(self.ctbc_leg_limits).all()
+                or torch.any(self.ctbc_leg_limits <= 0)):
+            raise ValueError("CTBC requires four finite positive leg offset limits")
+        self.ctbc_action_clip = torch.ones(6, device=self.device)
+        self.ctbc_action_clip[[0, 1, 3, 4]] = self.ctbc_leg_limits/self.ctbc_leg_scales
+        if self.ctbc_action_clip.max() > self.cfg.normalization.clip_actions+1e-6:
+            raise ValueError("Global action clip would truncate CTBC per-joint limits")
         self.ctbc_executed_actions = torch.zeros_like(self.actions)
         self.ctbc_raw_actions = torch.zeros_like(self.actions)
         self.ctbc_reference = torch.zeros(self.num_envs, 4, device=self.device)
@@ -73,6 +134,8 @@ class Q1CTBC(Q1):
         self.ctbc_swing_timeouts = torch.zeros_like(self.ctbc_goal_dwell)
         if not hasattr(self, "ctbc_goal_x"):
             self._refresh_climb_targets()
+        else:
+            self._update_guide_amplitudes()
 
     def set_training_iteration(self, iteration):
         """Called with cumulative PPO updates, including after checkpoint load."""
@@ -119,7 +182,8 @@ class Q1CTBC(Q1):
     def step(self, actions):
         # Never mutate the PPO sample: its log probability belongs to raw policy
         # actions. Q1.step stores the normalized composite as action history.
-        raw = actions.to(self.device).clamp(-1.0, 1.0)
+        raw = torch.maximum(torch.minimum(actions.to(self.device), self.ctbc_action_clip),
+                            -self.ctbc_action_clip)
         self.ctbc_raw_actions[:] = raw
         if self._guidance_mode != "off" and not self.cfg.ctbc.pure_policy:
             _, bottom = self._wheel_geometry()
@@ -131,7 +195,9 @@ class Q1CTBC(Q1):
         composite = raw.clone()
         composite[:, [0, 1, 3, 4]] += (self.ctbc_feedforward_weight*self.ctbc_reference
                                        / self.ctbc_leg_scales)
-        return super().step(composite.clamp(-1.0, 1.0))
+        composite = torch.maximum(torch.minimum(composite, self.ctbc_action_clip),
+                                  -self.ctbc_action_clip)
+        return super().step(composite)
 
     def _compute_torques(self, actions):
         position_ref = actions[:, [0, 1, 3, 4]]*self.ctbc_leg_scales
@@ -242,6 +308,7 @@ class Q1CTBC(Q1):
             "timeout": self.time_out_buf[valid].clone(),
             "height_m": self.ctbc_riser_heights[valid].clone(),
             "steps": self.ctbc_step_counts[valid].clone(),
+            "guide_lift_m": self.ctbc_guide_lift_heights[valid].clone(),
             "feedforward_weight": torch.full((len(valid),), self.ctbc_feedforward_weight, device=self.device),
         }
         triggers = self.ctbc_trigger_count[valid].clone()
@@ -267,6 +334,7 @@ class Q1CTBC(Q1):
             episode["ctbc_triggers"] = triggers.mean()
             episode["ctbc_swing_timeouts"] = swing_timeouts.mean()
             episode["ctbc_feedforward_weight"] = self.ctbc_feedforward_weight
+            episode["ctbc_guide_lift_m"] = event["guide_lift_m"].mean()
 
     def _reward_leg_symmetry(self):
         """Release symmetry immediately when either wheel hits an obstacle."""
@@ -280,7 +348,13 @@ class Q1CTBC(Q1):
         actual = self.dof_pos[:, self.leg_dof_indices]
         target = self.default_dof_pos[:, self.leg_dof_indices]+self.ctbc_reference
         error = (actual-target).reshape(self.num_envs, 2, 2).square().mean(dim=2)
-        return (torch.exp(-error/0.04)*self.guidance.swing_mask).sum(dim=1)
+        reward = (torch.exp(-error/0.04)*self.guidance.swing_mask).sum(dim=1)
+        if getattr(self.cfg.ctbc, "target_reward_anneals", False):
+            # Once guidance is removed, do not pull a successful higher lift
+            # back toward the smaller teaching trajectory.
+            initial = max(float(self.cfg.ctbc.feedforward_initial), 1e-6)
+            reward *= min(self.ctbc_feedforward_weight/initial, 1.0)
+        return reward
 
     def _reward_ctbc_clearance(self):
         _, bottom = self._wheel_geometry()
@@ -290,7 +364,11 @@ class Q1CTBC(Q1):
         fk = lambda q: -self.cfg.asset.l1*torch.cos(q[..., 0])-self.cfg.asset.l2*torch.cos(q.sum(dim=-1))
         desired = fk(reference_q)-fk(default_q)
         actual = bottom-self.guidance.start_height
-        return (torch.exp(-(actual-desired).square()/0.0009)*self.guidance.swing_mask).sum(dim=1)
+        allowance = getattr(self.cfg.ctbc, "clearance_overshoot_allowance", 0.0)
+        # In high-stair training, a 16 cm guide must not penalize the extra
+        # clearance needed for a 20 cm stair. Excessive overshoot remains costly.
+        error = (desired-actual).clamp_min(0)+(actual-desired-allowance).clamp_min(0)
+        return (torch.exp(-error.square()/0.0009)*self.guidance.swing_mask).sum(dim=1)
 
     def _reward_ctbc_contact(self):
         swing = self.guidance.swing_mask

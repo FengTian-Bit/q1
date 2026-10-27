@@ -28,6 +28,43 @@ def _list(value):
     return value.tolist() if hasattr(value, "tolist") else list(value)
 
 
+def guidance_metadata(env):
+    """Describe the realized guide and actuator envelope, when available.
+
+    These values describe the configured motion even during pure-policy trials;
+    the separate guidance mode and actual feedforward weight determine whether
+    that motion contributed to the executed action.
+    """
+    result = {}
+    cfg = getattr(env, "cfg", None)
+    ctbc = getattr(cfg, "ctbc", None)
+    control = getattr(cfg, "control", None)
+    heights = getattr(env, "ctbc_guide_lift_heights", None)
+    if heights is not None:
+        result["guide_lift_height_m"] = float(heights[0])
+    amplitudes = getattr(getattr(env, "guidance", None), "amplitudes", None)
+    if amplitudes is not None:
+        row = _list(amplitudes[0])
+        result["guide_hip_amplitude_rad"] = float(row[0])
+        result["guide_knee_amplitude_rad"] = float(row[1])
+    duration = getattr(ctbc, "swing_duration", None)
+    if duration is not None:
+        result["guide_swing_duration_s"] = float(duration)
+    start = getattr(ctbc, "feedforward_start_iteration", None)
+    if start is not None:
+        result["feedforward_start_iteration"] = int(start)
+    for key, actual, configured in (
+            ("leg_action_scales", "ctbc_leg_scales", "leg_action_scales"),
+            ("leg_action_limits", "ctbc_leg_limits", "leg_action_limits"),
+            ("action_clip_per_channel", "ctbc_action_clip", None)):
+        value = getattr(env, actual, None)
+        if value is None and configured is not None:
+            value = getattr(control, configured, None)
+        if value is not None:
+            result[key] = _list(value)
+    return result
+
+
 class EpisodeAccumulator:
     """Count exactly the requested number of completed episodes, without reset races."""
 
@@ -220,6 +257,7 @@ def evaluate(args):
                                   vertical_scale=float(cfg.terrain.vertical_scale),
                                   observation_noise=bool(cfg.noise.add_noise),
                                   domain_randomization=class_to_dict(cfg.domain_rand))
+                    result.update(guidance_metadata(env))
                     report["results"].append(result)
                     print("height={:.1f} cm guidance={} success={}/{} ({})".format(
                         height * 100, result["guidance"], result["success"], result["completed"],

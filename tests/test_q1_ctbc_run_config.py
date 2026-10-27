@@ -3,6 +3,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -58,6 +59,11 @@ def configure_stage(cfg, stage):
     cfg.terrain.num_steps = 1 if stage == "single" else 3
     cfg.terrain.riser_height_range = [.025, .08] if stage == "single" else [.04, .12]
     cfg.commands.ranges.lin_vel_x = [.15, .3]
+    if stage == "stairs20":
+        cfg.terrain.riser_height_range = [.08, .2]
+        cfg.ctbc.feedforward_start_iteration = 0
+        cfg.ctbc.feedforward_restart_on_entry = True
+        cfg.ctbc.guidance_profile = "stairs20_v1"
     return cfg
 
 
@@ -147,7 +153,7 @@ class CTBCRunConfigTests(unittest.TestCase):
         resolver.assert_called_once_with(str(run / "logs" / "custom_experiment"), load_run="oldrun", checkpoint=12345)
 
     def test_fresh_training_defaults_to_single_and_uses_requested_name(self):
-        for requested, expected in ((None, "single"), ("stairs", "stairs")):
+        for requested, expected in ((None, "single"), ("stairs", "stairs"), ("stairs20", "stairs20")):
             with self.subTest(requested=requested):
                 env, train = configs()
                 args = arguments(resume=False, ctbc_stage=requested)
@@ -158,6 +164,83 @@ class CTBCRunConfigTests(unittest.TestCase):
                 resolver.assert_not_called()
                 self.assertEqual(args.ctbc_stage, expected)
                 self.assertEqual(train.runner.run_name, expected)
+                if expected == "stairs20":
+                    self.assertEqual(env.ctbc.feedforward_start_iteration, 0)
+                    self.assertEqual(train.runner.ctbc_guidance_start_iteration, 0)
+
+    def test_entering_stairs20_starts_guidance_at_checkpoint_iteration(self):
+        for old_stage in ("single", "stairs", "robust"):
+            with self.subTest(old_stage=old_stage):
+                run, checkpoint = self.fixture(snapshot(old_stage), "model_30000.pt")
+                env, train = configs()
+                args = arguments(ctbc_stage="stairs20")
+                with patch.object(CONFIG, "_configure_stage", side_effect=configure_stage), \
+                        patch.object(CONFIG, "_load_checkpoint_iteration", return_value=30000) as read_iter:
+                    CONFIG.prepare_ctbc_training(env, train, args, run, Mock(return_value=str(checkpoint)))
+                read_iter.assert_called_once_with(checkpoint.resolve())
+                self.assertEqual(args.ctbc_stage, "stairs20")
+                self.assertEqual(env.ctbc.feedforward_start_iteration, 30000)
+                self.assertEqual(train.runner.ctbc_guidance_start_iteration, 30000)
+                self.assertEqual(train.runner.ctbc_guidance_entry_checkpoint_iteration, 30000)
+                self.assertEqual(env.ctbc.guidance_profile, "stairs20_v1")
+                self.assertEqual(env.control.leg_action_scales, [.55, .95, .55, .95])
+                self.assertEqual(train.policy.num_encoder_obs, 155)
+
+    def test_stairs20_resume_preserves_original_guidance_start_even_when_explicit(self):
+        for requested in (None, "stairs20"):
+            with self.subTest(requested=requested):
+                data = snapshot("stairs20")
+                data["env"]["ctbc"]["feedforward_start_iteration"] = 30000
+                data["env"]["ctbc"]["guidance_profile"] = "stairs20_v1"
+                data["train"]["runner"]["ctbc_guidance_entry_checkpoint_iteration"] = 30000
+                run, checkpoint = self.fixture(data, "model_40000.pt")
+                env, train = configs()
+                args = arguments(ctbc_stage=requested)
+                with patch.object(CONFIG, "_configure_stage", side_effect=configure_stage) as configure, \
+                        patch.object(CONFIG, "_load_checkpoint_iteration") as read_iter:
+                    CONFIG.prepare_ctbc_training(env, train, args, run, Mock(return_value=str(checkpoint)))
+                read_iter.assert_not_called()
+                self.assertEqual(configure.call_count, int(requested is not None))
+                self.assertEqual(env.ctbc.feedforward_start_iteration, 30000)
+                self.assertEqual(train.runner.ctbc_guidance_start_iteration, 30000)
+                self.assertEqual(train.runner.ctbc_guidance_entry_checkpoint_iteration, 30000)
+                self.assertEqual(args.checkpoint, 40000)
+
+    def test_leaving_stairs20_restores_old_cumulative_schedule_without_checkpoint_read(self):
+        for requested in ("single", "stairs", "robust"):
+            with self.subTest(requested=requested):
+                data = snapshot("stairs20")
+                data["env"]["ctbc"]["feedforward_start_iteration"] = 30000
+                run, checkpoint = self.fixture(data, "model_40000.pt")
+                env, train = configs()
+                with patch.object(CONFIG, "_configure_stage", side_effect=configure_stage), \
+                        patch.object(CONFIG, "_load_checkpoint_iteration") as read_iter:
+                    CONFIG.prepare_ctbc_training(env, train, arguments(ctbc_stage=requested), run,
+                                                 Mock(return_value=str(checkpoint)))
+                read_iter.assert_not_called()
+                self.assertEqual(env.ctbc.feedforward_start_iteration, 0)
+                self.assertEqual(train.runner.ctbc_guidance_start_iteration, 0)
+
+    def test_legacy_snapshot_without_offset_restores_global_clock(self):
+        run, checkpoint = self.fixture(snapshot("stairs"))
+        env, train = configs()
+        env.ctbc.feedforward_start_iteration = 999
+        with patch.object(CONFIG, "_load_checkpoint_iteration") as read_iter:
+            CONFIG.prepare_ctbc_training(env, train, arguments(), run, Mock(return_value=str(checkpoint)))
+        read_iter.assert_not_called()
+        self.assertEqual(env.ctbc.feedforward_start_iteration, 0)
+        self.assertEqual(train.runner.ctbc_guidance_start_iteration, 0)
+
+    def test_iteration_reader_uses_safe_cpu_loading_and_rejects_invalid_metadata(self):
+        reader = Mock(return_value={"iter": 30000})
+        with patch.dict(sys.modules, {"torch": SimpleNamespace(load=reader)}):
+            self.assertEqual(CONFIG._load_checkpoint_iteration("model_40000.pt"), 30000)
+        reader.assert_called_once_with("model_40000.pt", map_location="cpu", weights_only=True)
+        for invalid in (None, -1, 1.5, True, "30000"):
+            with self.subTest(iteration=invalid), \
+                    patch.dict(sys.modules, {"torch": SimpleNamespace(load=Mock(return_value={"iter": invalid}))}), \
+                    self.assertRaisesRegex(ValueError, "checkpoint 'iter'"):
+                CONFIG._load_checkpoint_iteration("model_40000.pt")
 
     def test_missing_snapshot_or_foreign_task_fails_before_mutation(self):
         run, checkpoint = self.fixture()
@@ -189,6 +272,10 @@ class CTBCRunConfigTests(unittest.TestCase):
         data = snapshot()
         data["stage"] = "robust"
         cases.append(data)
+        for offset in (-1, True, 30000.5, None):
+            data = snapshot("stairs20")
+            data["env"]["ctbc"]["feedforward_start_iteration"] = offset
+            cases.append(data)
         for data in cases:
             with self.subTest(data=data), self.assertRaisesRegex(ValueError, "incompatible"):
                 CONFIG.validate_ctbc_snapshot(data)

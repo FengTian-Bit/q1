@@ -151,6 +151,95 @@ class ContactGuidanceTests(unittest.TestCase):
         guide.cfg.feedforward_enabled = False
         self.assertEqual(guide.feedforward_weight(0), 0.0)
 
+    def test_amplitudes_are_environment_specific_and_preserved_across_reset(self):
+        guide = make_guidance(3)
+        changed = torch.tensor([[0.53146, -1.06293], [0.4, -0.8]])
+        guide.set_amplitudes(torch.tensor([1, 2]), changed)
+        sample(guide, [[20, 0], [0, 20], [20, 0]], steps=3)
+        sample(guide, [[0, 0], [0, 0], [0, 0]], steps=30)
+        torch.testing.assert_close(guide.reference_offsets(), torch.tensor([
+            [0.2952, -0.5905, 0.0, 0.0],
+            [0.0, 0.0, 0.53146, -1.06293],
+            [0.4, -0.8, 0.0, 0.0]]))
+        guide.reset(torch.tensor([1]))
+        torch.testing.assert_close(guide.amplitudes[1:], changed)
+        self.assertEqual(guide.active_leg.tolist(), [0, -1, 0])
+        torch.testing.assert_close(guide.reference_offsets()[1], torch.zeros(4))
+
+    def test_invalid_amplitude_updates_are_rejected_atomically(self):
+        guide = make_guidance(2)
+        before = guide.amplitudes.clone()
+        for values in (torch.tensor([[float("nan"), -0.5]]),
+                       torch.tensor([[0.2, float("inf")]]),
+                       torch.zeros(2), torch.zeros(1, 3), torch.zeros(2, 2)):
+            with self.assertRaises(ValueError):
+                guide.set_amplitudes(torch.tensor([1]), values)
+            torch.testing.assert_close(guide.amplitudes, before)
+        with self.assertRaises(ValueError):
+            make_guidance(hip_amplitude=float("nan"))
+
+    def test_feedforward_schedule_uses_relative_iterations_after_restart(self):
+        guide = make_guidance(feedforward_start_iteration=100,
+                              feedforward_initial=0.75,
+                              feedforward_hold_iterations=10,
+                              feedforward_anneal_iterations=20)
+        # Before the offset, the configured initial value remains available;
+        # entering a later stage does not consume its hold period in advance.
+        for iteration in (0, 99, 100, 109, 110):
+            self.assertEqual(guide.feedforward_weight(iteration), 0.75)
+        self.assertEqual(guide.feedforward_weight(120), 0.375)
+        self.assertEqual(guide.feedforward_weight(130), 0.0)
+        self.assertEqual(guide.feedforward_weight(200), 0.0)
+        guide.cfg.feedforward_anneal_iterations = 0
+        self.assertEqual(guide.feedforward_weight(109), 0.75)
+        self.assertEqual(guide.feedforward_weight(110), 0.0)
+
+    def test_restart_ramp_is_part_of_hold_before_annealing(self):
+        guide = make_guidance(feedforward_start_iteration=30000,
+                              feedforward_ramp_iterations=1000,
+                              feedforward_hold_iterations=3000,
+                              feedforward_anneal_iterations=12000)
+        for iteration in (0, 29999, 30000):
+            self.assertEqual(guide.feedforward_weight(iteration), 0.0)
+        self.assertEqual(guide.feedforward_weight(30500), 0.5)
+        self.assertEqual(guide.feedforward_weight(31000), 1.0)
+        self.assertEqual(guide.feedforward_weight(32999), 1.0)
+        self.assertEqual(guide.feedforward_weight(33000), 1.0)
+        self.assertEqual(guide.feedforward_weight(39000), 0.5)
+        self.assertEqual(guide.feedforward_weight(45000), 0.0)
+        guide.cfg.feedforward_enabled = False
+        self.assertEqual(guide.feedforward_weight(31000), 0.0)
+
+    def test_ramp_outside_hold_is_rejected(self):
+        for ramp in (-1, 3001, float("nan"), float("inf")):
+            with self.assertRaises(ValueError):
+                make_guidance(feedforward_ramp_iterations=ramp)
+        guide = make_guidance()
+        guide.cfg.feedforward_ramp_iterations = 3001
+        with self.assertRaises(ValueError):
+            guide.feedforward_weight(0)
+
+    def test_landing_rise_uses_the_active_wheel_not_the_other_support(self):
+        guide = make_guidance(min_landing_rise=0.02)
+        sample(guide, [[20, 0]], height=[[0.03, 0.0]], steps=3)
+        sample(guide, [[0, 0]], support=[[False, True]],
+               height=[[0.04, 0.0]], steps=10)
+        # The right wheel being high cannot qualify a left-wheel landing.
+        sample(guide, [[0, 0]], height=[[0.04, 0.5]], steps=25)
+        self.assertEqual(guide.active_leg.item(), 0)
+        self.assertTrue(guide.has_unloaded.item())
+        sample(guide, [[0, 0]], height=[[0.05, 0.0]])
+        self.assertEqual(guide.active_leg.item(), -1)
+        self.assertFalse(guide.timed_out.item())
+
+    def test_insufficient_landing_rise_still_ends_at_timeout(self):
+        guide = make_guidance(min_landing_rise=0.02)
+        sample(guide, [[0, 20]], steps=3)
+        sample(guide, [[0, 0]], support=[[True, False]], steps=10)
+        sample(guide, [[0, 0]], height=[[0.0, 0.01]], steps=50)
+        self.assertEqual(guide.active_leg.item(), -1)
+        self.assertTrue(guide.timed_out.item())
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -48,6 +48,10 @@ python wheel_legged_gym/scripts/evaluate_q1_ctbc.py --load_run=RUN_NAME --checkp
 正式验收使用 `--guidance=off` 的纯网络成功率；CPU 测试尚不能证明物理上楼能力。
 阶段续训、参数、评估单位与验证范围见 [CTBC 任务说明](wheel_legged_gym/envs/q1_ctbc/README.md)。
 
+已有低台阶策略可用 `--ctbc_stage=stairs20 --resume --load_run=RUN_NAME --checkpoint=-1`
+继续训练 10–20 cm 连续楼梯。该阶段按课程把引导从 8 cm 增至 16 cm，扩大腿目标范围，
+保留原动作归一化尺度，并在跨入阶段时重新计时指导渐入与退火。新阶段的 20 cm 实际能力仍需评估。
+
 ---
 
 ## q1_flat 基线与原项目说明

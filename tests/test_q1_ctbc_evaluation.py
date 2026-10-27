@@ -136,6 +136,29 @@ class CTBCEvaluationTests(unittest.TestCase):
         self.assertEqual((cfg.terrain.num_rows, cfg.terrain.num_cols, cfg.env.num_envs), (1, 1, 64))
         self.assertEqual(cfg.init_state.reset_lin_vel, 0.0)
 
+    def test_guidance_metadata_reports_actual_high_lift_and_supports_legacy_environments(self):
+        env = SimpleNamespace(
+            cfg=SimpleNamespace(ctbc=SimpleNamespace(swing_duration=.8, feedforward_start_iteration=30000),
+                                control=SimpleNamespace(leg_action_scales=[.5, .9, .5, .9],
+                                                        leg_action_limits=None)),
+            ctbc_guide_lift_heights=[.16, .08],
+            guidance=SimpleNamespace(amplitudes=[[.55, -1.10], [.3, -.6]]),
+            ctbc_leg_limits=[.7, 1.35, .7, 1.35],
+            ctbc_action_clip=[1.4, 1.5, 1.0, 1.4, 1.5, 1.0])
+        metadata = EVAL.guidance_metadata(env)
+        self.assertEqual(metadata["guide_lift_height_m"], .16)
+        self.assertEqual(metadata["guide_swing_duration_s"], .8)
+        self.assertEqual(metadata["guide_hip_amplitude_rad"], .55)
+        self.assertEqual(metadata["guide_knee_amplitude_rad"], -1.10)
+        self.assertEqual(metadata["feedforward_start_iteration"], 30000)
+        self.assertEqual(metadata["leg_action_scales"], [.5, .9, .5, .9])
+        self.assertEqual(metadata["leg_action_limits"], [.7, 1.35, .7, 1.35])
+        self.assertEqual(metadata["action_clip_per_channel"], [1.4, 1.5, 1.0, 1.4, 1.5, 1.0])
+        json.dumps(metadata)  # metadata must be directly serializable
+        self.assertEqual(EVAL.guidance_metadata(SimpleNamespace()), {})
+        legacy = SimpleNamespace(cfg=SimpleNamespace(control=SimpleNamespace(leg_action_scales=[.35] * 4)))
+        self.assertEqual(EVAL.guidance_metadata(legacy), {"leg_action_scales": [.35] * 4})
+
     def test_checkpoint_config_is_restored_without_optimizers_and_modes_apply_after_load(self):
         calls = []
 
@@ -153,6 +176,10 @@ class CTBCEvaluationTests(unittest.TestCase):
 
             def __init__(self, cfg):
                 self.cfg, self.num_envs = cfg, cfg.env.num_envs
+                self.ctbc_guide_lift_heights = [.16] * self.num_envs
+                self.guidance = SimpleNamespace(amplitudes=[[.55, -1.10]] * self.num_envs)
+                self.ctbc_leg_limits = [.7, 1.35, .7, 1.35]
+                self.ctbc_action_clip = [1.4, 1.5, 1.0, 1.4, 1.5, 1.0]
                 self.terrain = SimpleNamespace(riser_heights=Grid(.025), tread_widths=Grid(.5),
                                                step_counts=Grid(1), first_riser_x=Grid(1.7), goal_x=Grid(2.0))
                 self.gym = SimpleNamespace(destroy_sim=lambda sim: calls.append("destroy"))
@@ -186,6 +213,7 @@ class CTBCEvaluationTests(unittest.TestCase):
                               terrain=SimpleNamespace(curriculum=True, selected=False,
                                                       horizontal_scale=.025, vertical_scale=.005),
                               control=SimpleNamespace(leg_action_scales=[.35] * 4),
+                              ctbc=SimpleNamespace(swing_duration=.8, feedforward_start_iteration=30000),
                               init_state=SimpleNamespace(reset_lin_vel=.1, reset_ang_vel=.1),
                               noise=SimpleNamespace(add_noise=False), domain_rand=SimpleNamespace(push_robots=False),
                               sim=SimpleNamespace(dt=.005))
@@ -232,7 +260,13 @@ class CTBCEvaluationTests(unittest.TestCase):
                 report = EVAL.evaluate(args)
             self.assertTrue(report["complete"])
             self.assertEqual([row["guidance"] for row in report["results"]], ["off", "on"])
+            self.assertEqual([row["feedforward_weight"] for row in report["results"]], [0.0, 1.0])
             self.assertEqual([row["completed"] for row in report["results"]], [2, 2])
+            for row in report["results"]:
+                self.assertEqual(row["guide_lift_height_m"], .16)
+                self.assertEqual(row["guide_swing_duration_s"], .8)
+                self.assertEqual(row["feedforward_start_iteration"], 30000)
+                self.assertEqual(row["leg_action_limits"], [.7, 1.35, .7, 1.35])
             self.assertEqual(report["results"][0]["checkpoint_iteration"], 12345)
             self.assertEqual(json.loads(Path(args.output).read_text())["seed"], 7)
             self.assertEqual(calls, [("runner", None, 128), ("load", False), ("guidance", "off"), "destroy",
