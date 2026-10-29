@@ -58,5 +58,5 @@ def print_terrain_layout(cfg):
 
 
 def keyboard_play(args):
-    from wheel_legged_gym.envs.q1.play_q1 import play_q1
+    from wheel_legged_gym.envs.q1.play_t0 import play_q1
     return play_q1(args, playback_configure=configure_keyboard_play)

@@ -191,7 +191,7 @@ def get_args(extra_custom_parameters=None, default_task="anymal_c_flat"):
             "type": str,
             "choices": ["balance", "low_speed", "turning"],
             "default": None,
-            "help": "q1 defaults to turning; q1_flat defaults to low_speed. turning is q1-only.",
+            "help": "Legacy stages for q1_flat (balance/low_speed); q1 now uses the T0 terrain curriculum without a stage flag.",
         },
         {
             "name": "--task",

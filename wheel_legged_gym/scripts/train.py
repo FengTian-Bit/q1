@@ -40,20 +40,23 @@ import torch
 
 
 def train(args):
+    if args.task == "q1":
+        from wheel_legged_gym.envs.q1.t0_run_config import prepare_q1_t0_training
+        from wheel_legged_gym.utils.helpers import get_load_path
+        env_cfg, q1_train_cfg = task_registry.get_cfgs(args.task)
+        prepare_q1_t0_training(env_cfg, q1_train_cfg, args,
+                              WHEEL_LEGGED_GYM_ROOT_DIR, get_load_path)
     if args.task == "q1_ctbc":
         from wheel_legged_gym.envs.q1_ctbc.run_config import prepare_ctbc_training
         from wheel_legged_gym.utils.helpers import get_load_path
         env_cfg, ctbc_train_cfg = task_registry.get_cfgs(args.task)
         prepare_ctbc_training(env_cfg, ctbc_train_cfg, args,
                               WHEEL_LEGGED_GYM_ROOT_DIR, get_load_path)
-    if args.task in ("q1_flat", "q1"):
+    if args.task == "q1_flat":
         env_cfg, q1_train_cfg = task_registry.get_cfgs(args.task)
-        args.q1_stage = args.q1_stage or ("turning" if args.task == "q1" else "low_speed")
-        if args.task == "q1":
-            from wheel_legged_gym.envs.q1.q1_config import configure_q1_stage
-            configure_q1_stage(env_cfg, args.q1_stage)
-        elif args.q1_stage == "turning":
-            raise ValueError("--q1_stage=turning requires --task=q1")
+        args.q1_stage = args.q1_stage or "low_speed"
+        if args.q1_stage == "turning":
+            raise ValueError("q1_flat supports --q1_stage=balance or low_speed")
         elif args.q1_stage == "balance":
             env_cfg.commands.ranges.lin_vel_x = [0.0, 0.0]
             env_cfg.commands.stand_probability = 1.0
@@ -69,7 +72,8 @@ def train(args):
         from shutil import copyfile
         from wheel_legged_gym.utils.helpers import class_to_dict
         with open(os.path.join(task_registry.log_dir, "resolved_config.json"), "w") as output:
-            stage = args.ctbc_stage if args.task == "q1_ctbc" else args.q1_stage
+            stage = ("t0" if args.task == "q1" else
+                     args.ctbc_stage if args.task == "q1_ctbc" else args.q1_stage)
             json.dump({"task": args.task, "stage": stage, "env": class_to_dict(env_cfg),
                        "train": class_to_dict(train_cfg)}, output, indent=2)
         asset_path = env_cfg.asset.file.format(WHEEL_LEGGED_GYM_ROOT_DIR=WHEEL_LEGGED_GYM_ROOT_DIR)
@@ -78,12 +82,17 @@ def train(args):
             for filename in ("q1_flat.py", "q1_flat_config.py"):
                 copyfile(os.path.join(WHEEL_LEGGED_GYM_ROOT_DIR, "wheel_legged_gym", "envs", "q1_flat", filename),
                          os.path.join(task_registry.log_dir, "parent_"+filename))
-        if args.task == "q1_ctbc":
+        if args.task in ("q1", "q1_ctbc"):
             for folder, filenames in (("q1", ("q1.py", "q1_config.py")),
-                                      ("q1_ctbc", ("guidance.py", "terrain.py", "run_config.py"))):
+                                      ("q1_ctbc", ("q1_ctbc.py", "q1_ctbc_config.py", "guidance.py", "terrain.py", "run_config.py"))):
                 for filename in filenames:
                     copyfile(os.path.join(WHEEL_LEGGED_GYM_ROOT_DIR, "wheel_legged_gym", "envs", folder, filename),
                              os.path.join(task_registry.log_dir, "source_"+filename))
+        if args.task == "q1":
+            for filename in ("q1_t0.py", "q1_t0_config.py", "t0_terrain.py",
+                             "t0_curriculum.py", "t0_commands.py", "t0_run_config.py"):
+                copyfile(os.path.join(WHEEL_LEGGED_GYM_ROOT_DIR, "wheel_legged_gym", "envs", "q1", filename),
+                         os.path.join(task_registry.log_dir, "source_"+filename))
     ppo_runner.learn(
         num_learning_iterations=train_cfg.runner.max_iterations,
         init_at_random_ep_len=args.task != "q1_ctbc",

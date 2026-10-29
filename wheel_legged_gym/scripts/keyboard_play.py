@@ -11,7 +11,7 @@ def main():
          "choices": ["mixed"] + list(GALLERY),
          "help": "Explicit terrain per robot; mixed starts with both stair directions."},
         {"name": "--difficulty", "type": float, "default": 0.5,
-         "help": "Fixed terrain difficulty in [0, 1]; 1 gives 20 cm stair risers."},
+         "help": "Fixed T0 terrain difficulty in [0, 1]; 1 gives nominal 25 cm stair risers."},
     ])
     keyboard_play(args)
 

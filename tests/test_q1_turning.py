@@ -136,33 +136,12 @@ class Q1TurningTests(unittest.TestCase):
         self.assertIn("q1_yaw_mae", env.extras["episode"])
         self.assertEqual(env.yaw_acceleration.abs().sum().item(), 0)
 
-    def test_stage_configuration_and_default_training_entrypoint(self):
+    def test_legacy_locomotion_base_stage_configuration(self):
         cfg = NS["Q1Cfg"]()
         self.assertEqual(cfg.commands.ranges.ang_vel_yaw, [-0.6, 0.6])
         for stage in ("balance", "low_speed", "turning"):
             NS["configure_q1_stage"](cfg, stage)
             self.assertEqual(cfg.commands.ranges.ang_vel_yaw, [-0.6, 0.6] if stage == "turning" else [0.0, 0.0])
-        config_module = ModuleType("wheel_legged_gym.envs.q1.q1_config")
-        config_module.configure_q1_stage = NS["configure_q1_stage"]
-
-        class ReadyForGym(Exception):
-            pass
-
-        def make_env(**kwargs):
-            raise ReadyForGym()
-
-        for stage in (None, "balance", "low_speed", "turning"):
-            cfg, train = NS["Q1Cfg"](), NS["Q1CfgPPO"]()
-            registry = SimpleNamespace(get_cfgs=lambda task: (cfg, train), make_env=make_env)
-            train_ns = dict(NS, task_registry=registry)
-            load_code("wheel_legged_gym/scripts/train.py", train_ns)
-            args = SimpleNamespace(task="q1", q1_stage=stage, run_name=None)
-            with patch.dict(sys.modules, {config_module.__name__: config_module}):
-                with self.assertRaises(ReadyForGym):
-                    train_ns["train"](args)
-            self.assertEqual(args.q1_stage, stage or "turning")
-            self.assertEqual(train.runner.run_name, stage or "turning")
-            self.assertEqual((cfg.env.num_envs, train.runner.max_iterations), (4096, 30000))
 
     def test_headless_default_auto_evaluates_both_turn_directions_and_arcs(self):
         env = improved(2, stage="turning")

@@ -1,43 +1,38 @@
 # Q1 双轮腿训练
 
-正式任务 **q1**：默认 turning 阶段，4096 个并行环境、30000 轮 PPO，混合地形，
-混合停车、直行、原地转向和行驶转弯；非零前后速度幅值 0.15–0.8 m/s，转向角速度 ±0.2–0.6 rad/s。
-包含实际腿姿态、双轮支撑、接触滑移和停车约束；直线路径约束只在直行时启用。
-保留 `q1_flat` 和原有三个任务作为对照。
+正式任务 **q1** 现在基于 `q1_ctbc`：保留六维动作与接触抬腿指导，
+完整采用四轮足普通 T0 的有效混合地形、中心平台出生、难度行和距离升降级机制。
+速度采样也采用 T0，只去掉 Y 向平移：vx ±1.8 m/s，目标航向 ±3.14 rad，
+航向反馈 yaw 限制 ±1 rad/s，10 s 重采、20 s 回合。默认 4096 环境、30000 轮 PPO。
+`q1_ctbc` 保留定向上楼专项，`q1_flat` 保留平地基线。
 
 ```bash
 # 已安装 Isaac Gym Preview 4 的训练环境，项目根目录执行
 pip install -e .
 swanlab login
 python wheel_legged_gym/scripts/train.py --task=q1 --headless
-python wheel_legged_gym/scripts/play.py --task=q1 --num_envs=1
-python wheel_legged_gym/scripts/keyboard_play.py --task=q1 --checkpoint=30000
+python wheel_legged_gym/scripts/play.py --task=q1 --load_run=Q1_T0_RUN --num_envs=1
+python wheel_legged_gym/scripts/keyboard_play.py --task=q1 --load_run=Q1_T0_RUN --terrain=stairs_down
 ```
 
-新增 `keyboard_play.py` 默认 6 个环境，固定分配两种楼梯、两种坡地、粗糙坡地和平地，默认难度 0.5。
-0 号为 `stairs_down` 凹坑地形，从中央向外行驶是上楼；1 号为 `stairs_up` 山丘地形，向外行驶是下楼。
-保留训练时 3 m 中央平台，开出约 1.5 m 才碰到台阶。`--difficulty=1` 测试 20 cm 台阶，
-`--terrain=stairs_down --num_envs=1` 可单独测试上楼。可用 `--load_run=训练目录名` 明确指定模型来源。
-播放覆盖配置不改训练配置；具体用法见 [Q1 说明](wheel_legged_gym/envs/q1/README.md)。
+当前配置在 `wheel_legged_gym/envs/q1/q1_t0_config.py`。不再使用旧的 `--q1_stage`；
+新 q1 同任务恢复需配套的 `resolved_config.json`，旧非 CTBC 的 q1 模型会明确拒绝。
+已有 CTBC 模型可用 `--resume --load_run=/绝对路径/logs/q1_ctbc/CTBC_RUN` 迁移，
+恢复网络和优化器后启动 T0 地形课程及新的指导渐入/退火，输出仍进入 `logs/q1`。
 
-默认播放支持 W/S 前后速度、A/D 转向、X 停车、空格暂停、F 相机与数字键选机器人；自动评估加 `--play_mode=auto`，包含左右原地转向与行驶转弯。J/L 不绑定功能。
+播放默认关闭指导评估纯策略，键盘布局沿用 W/S、A/D、X、空格、F；自动播放保留 T0 随机指令。
+T0 最高难度行约 24 cm 单阶，踏面网格取整通常为 20 cm；`stairs_down` 从中心向外是上楼。
+指导仍采用 8–16 cm 高抬腿参考和 Q1 原关节/轮速/力矩约束，不保证能跟踪 T0 的全部速度或地形。
+周期视频默认关闭，日志仍使用 SwanLab 项目 `Q1` 并保留本地 TensorBoard。
 
-q1 默认将训练曲线和配置记录到 SwanLab 项目 `Q1`，同时保留本地 TensorBoard 备份。
-首次在训练环境安装依赖并登录一次；离线运行加 `--swanlab_mode=offline`，仅本地 TensorBoard 可用 `--logger=tensorboard`。
-默认环境数和训练轮数仍为 4096 / 30000，模型检查点仍在 `logs/q1/<运行目录>/`。
-训练与键盘遥控的 vx 上限统一为 ±0.8 m/s，由 `Q1Cfg.commands.max_forward_speed` 配置；W/S 每次加减 0.2 m/s。
-复杂地形已恢复左右腿软对称惩罚，保留容差及转向/恢复时的放宽。
-默认每 1500 轮录制 12 秒评估视频，保留 1280×720 / 25 fps MP4，并生成最高宽 640 像素、10 fps GIF 上传 SwanLab 的 `video` 媒体卡片。
-录制由独立 headless 进程完成，结果位于 `logs/q1/<运行目录>/videos/training/`；训练命令无需额外参数。
-
-[q1 任务与训练说明](wheel_legged_gym/envs/q1/README.md)。可用已有 q1 检查点继续训练转向；不能直接加载 q1_flat 检查点。
-本地 CPU 接口与 PPO 测试不代表已验证真实仿真性能；实际收敛需训练评估。
+具体几何、升降级、续训和播放见 [q1 任务说明](wheel_legged_gym/envs/q1/README.md)。
+本地 CPU 接口测试不代表已验证真实仿真收敛。
 
 ## q1_ctbc 盲上楼梯专项
 
 新增独立任务 `q1_ctbc`：以定向单台阶训练接触后交替抬腿，提供训练前馈、累计轮数退火、
 真实落台成功判据及专项课程。默认 4096 环境、30000 轮，先学习 2.5–8 cm 单阶，
-再通过 `--ctbc_stage=stairs` 训练 4–12 cm 连续三阶。`q1`、`q1_flat` 保留原配置。
+再通过 `--ctbc_stage=stairs` 训练 4–12 cm 连续三阶；`q1` 使用上述 T0 混合地形课程。
 
 ```bash
 python wheel_legged_gym/scripts/train.py --task=q1_ctbc --ctbc_stage=single --headless

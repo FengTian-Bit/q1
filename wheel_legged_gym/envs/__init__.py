@@ -69,9 +69,12 @@ task_registry.register("q1_flat", Q1Flat, Q1FlatCfg(), Q1FlatCfgPPO())
 from .q1.q1 import Q1
 from .q1.q1_config import Q1Cfg, Q1CfgPPO
 
-task_registry.register("q1", Q1, Q1Cfg(), Q1CfgPPO())
-
 from .q1_ctbc.q1_ctbc import Q1CTBC
 from .q1_ctbc.q1_ctbc_config import Q1CTBCCfg, Q1CTBCCfgPPO
 
 task_registry.register("q1_ctbc", Q1CTBC, Q1CTBCCfg(), Q1CTBCCfgPPO())
+
+from .q1.q1_t0 import Q1T0CTBC
+from .q1.q1_t0_config import Q1T0Cfg, Q1T0CfgPPO
+
+task_registry.register("q1", Q1T0CTBC, Q1T0Cfg(), Q1T0CfgPPO())
