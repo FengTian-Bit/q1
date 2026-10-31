@@ -34,7 +34,7 @@ class CTBCEvaluationTests(unittest.TestCase):
         with patch.dict(sys.modules, {
                 "wheel_legged_gym.scripts.evaluate_q1_ctbc": SimpleNamespace(evaluate=evaluate)}):
             self.assertEqual(namespace["play"](args), {"complete": True})
-        evaluate.assert_called_once_with(args, export_policy=True)
+        evaluate.assert_called_once_with(args, export_policy=True, plot_torques=True)
 
     def test_cli_initializes_registry_before_importing_utils(self):
         # A preloaded/mock registry hides the standalone CLI cycle. Reproduce
@@ -206,6 +206,9 @@ class CTBCEvaluationTests(unittest.TestCase):
 
             def step(self, action):
                 calls.append("step")
+                recorder = getattr(self, "_play_torque_recorder", None)
+                if recorder is not None:
+                    recorder.record("physics sample")
                 return None, None, None, [True, True, True], {"ctbc_episode": {
                     "env_ids": [0, 1, 2], "success": [True, False, True],
                     "physical_failure": [False, False, False], "timeout": [False, True, False]}}, None
@@ -318,13 +321,78 @@ class CTBCEvaluationTests(unittest.TestCase):
             args.export_only = False
             args.export_onnx = True
             with patch.dict(sys.modules, modules), redirect_stdout(io.StringIO()), \
-                    patch.object(Env, "step", side_effect=KeyboardInterrupt), self.assertRaises(KeyboardInterrupt):
+                    patch.object(Env, "step", side_effect=KeyboardInterrupt):
                 EVAL.evaluate(args)
             interrupted = json.loads(Path(args.output).read_text())
             self.assertFalse(interrupted["complete"])
+            self.assertEqual(interrupted["stop_reason"], "keyboard_interrupt")
             self.assertEqual(interrupted["policy_onnx"], str(exported_path))
             self.assertTrue(exported_path.exists())
             self.assertEqual(calls.count("destroy"), 1)
+
+            class Recorder:
+                def __init__(self, env):
+                    self.env, self.count = env, 0
+
+                def record(self, torques):
+                    self.count += 1
+
+                def save_png(self, path, title):
+                    self_test.assertIsNone(self.env._play_torque_recorder)
+                    calls.append(("save_plot", self.count))
+                    if self.count:
+                        path.write_bytes(b"plot fixture")
+                        return path
+
+            self_test = self
+            modules["wheel_legged_gym.utils.torque_plot"] = SimpleNamespace(TorqueRecorder=Recorder)
+            original_step = Env.step
+
+            # Closing the viewer or Ctrl+C must save the accumulated trace and
+            # stop, rather than launch the next guidance condition's viewer.
+            for signal, reason in ((SystemExit(), "viewer_closed"), (KeyboardInterrupt(), "keyboard_interrupt")):
+                with self.subTest(stop=reason):
+                    calls.clear()
+                    args.episodes = 100
+
+                    def stop_after_one(env, action):
+                        if getattr(env, "stepped_once", False):
+                            raise signal
+                        env.stepped_once = True
+                        return original_step(env, action)
+
+                    with patch.dict(sys.modules, modules), redirect_stdout(io.StringIO()), \
+                            patch.object(Env, "step", stop_after_one):
+                        report = EVAL.evaluate(args, plot_torques=True)
+                    self.assertEqual(report["stop_reason"], reason)
+                    self.assertFalse(report["complete"])
+                    self.assertEqual(calls.count("destroy"), 1)
+                    self.assertLess(calls.index(("save_plot", 1)), calls.index("destroy"))
+                    self.assertEqual(len(report["torque_plots"]), 1)
+                    self.assertTrue(Path(report["torque_plots"][0]).exists())
+                    self.assertEqual(json.loads(Path(args.output).read_text())["torque_plots"], report["torque_plots"])
+
+            calls.clear()
+            args.episodes = 2
+            with patch.dict(sys.modules, modules), redirect_stdout(io.StringIO()):
+                report = EVAL.evaluate(args, plot_torques=True)
+            self.assertTrue(report["complete"])
+            self.assertEqual(len(set(report["torque_plots"])), 2)
+            self.assertEqual(calls.count(("save_plot", 1)), 2)
+
+            calls.clear()
+            with patch.dict(sys.modules, modules), redirect_stdout(io.StringIO()), \
+                    patch.object(Env, "step", side_effect=SystemExit):
+                report = EVAL.evaluate(args, plot_torques=True)
+            self.assertNotIn("torque_plots", report)
+            self.assertIn(("save_plot", 0), calls)
+
+            calls.clear()
+            args.export_only = True
+            with patch.dict(sys.modules, modules), redirect_stdout(io.StringIO()):
+                report = EVAL.evaluate(args, plot_torques=True)
+            self.assertNotIn("torque_plots", report)
+            self.assertEqual(calls, [("runner", None, 128), ("load", False), ("export", 31, 155), "destroy"])
             # A Q1 checkpoint can have the same actor dimensions; reject its
             # missing CTBC contract before creating another environment.
             del saved["env"]["ctbc"]

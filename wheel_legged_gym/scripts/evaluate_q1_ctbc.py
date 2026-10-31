@@ -172,7 +172,7 @@ def evaluation_arguments():
     ]
 
 
-def evaluate(args, export_policy=False):
+def evaluate(args, export_policy=False, plot_torques=False):
     # Isaac Gym must precede torch imports. Importing pure helpers needs neither.
     import isaacgym  # noqa: F401
     import torch
@@ -234,7 +234,7 @@ def evaluate(args, export_policy=False):
                 configure_evaluation(cfg, height, tread, steps, num_envs)
                 cfg.seed = trial_args.seed = seed
                 trial_args.num_envs = num_envs
-                env = None
+                env, torque_recorder = None, None
                 try:
                     env, _ = task_registry.make_env("q1_ctbc", args=trial_args, env_cfg=cfg)
                     runner = OnPolicyRunner(env, class_to_dict(train_cfg), log_dir=None, device=args.rl_device)
@@ -253,6 +253,10 @@ def evaluate(args, export_policy=False):
                         print("Exported Q1 CTBC policy as ONNX:", policy_path, flush=True)
                     if export_only:
                         return report
+                    if plot_torques:
+                        from wheel_legged_gym.utils.torque_plot import TorqueRecorder
+                        torque_recorder = TorqueRecorder(env)
+                        env._play_torque_recorder = torque_recorder
                     # Force a diagnostic mode after load, which restores cumulative iteration.
                     env.set_guidance_mode("on" if guided else "off")
                     policy = runner.get_inference_policy(device=env.device)
@@ -279,12 +283,29 @@ def evaluate(args, export_policy=False):
                         height * 100, result["guidance"], result["success"], result["completed"],
                         "complete" if result["complete"] else "STEP LIMIT REACHED"), flush=True)
                 finally:
-                    if env is not None:
-                        if env.viewer is not None:
-                            env.gym.destroy_viewer(env.viewer)
-                        env.gym.destroy_sim(env.sim)
+                    try:
+                        if torque_recorder is not None:
+                            env._play_torque_recorder = None
+                            plot_path = output.with_name(output.stem + "_h{:g}cm_{}_torques.png".format(
+                                height * 100, "guided" if guided else "policy"))
+                            saved = torque_recorder.save_png(plot_path, title=(
+                                "Q1 CTBC | {} | {:g} cm | Guidance {}".format(
+                                    checkpoint.stem, height * 100, "on" if guided else "off")))
+                            if saved is not None:
+                                report.setdefault("torque_plots", []).append(str(saved))
+                    finally:
+                        if env is not None:
+                            if env.viewer is not None:
+                                env.gym.destroy_viewer(env.viewer)
+                            env.gym.destroy_sim(env.sim)
                 # Preserve completed conditions even if a later simulation cannot start.
                 output.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    except KeyboardInterrupt:
+        report["stop_reason"] = "keyboard_interrupt"
+    except SystemExit as exc:
+        if exc.code not in (None, 0):
+            raise
+        report["stop_reason"] = "viewer_closed"
     finally:
         report["complete"] = ("policy_onnx" in report if export_only else (
             len(report["results"]) == len(heights) * len(conditions)

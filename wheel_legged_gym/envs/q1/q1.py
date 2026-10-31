@@ -519,6 +519,7 @@ class Q1(Q1Flat):
         for field in (self.wheel_force, self.wheel_duty, self.wheel_slip, self.wheel_saturation):
             field.zero_()
         self.wheel_clearance[:] = -1.0
+        torque_recorder = getattr(self, "_play_torque_recorder", None)
         for _ in range(self.cfg.control.decimation):
             self.envs_steps_buf += 1
             self.action_fifo = torch.cat((self.actions[:, None], self.action_fifo[:, :-1]), dim=1)
@@ -543,6 +544,10 @@ class Q1(Q1Flat):
             self.wheel_force += force
             self.wheel_duty += touch
             self.wheel_slip += slip.abs()
+            if torque_recorder is not None:
+                # Record before post_physics_step can reset an ended episode
+                # and clear its torque tensor. Training has no recorder.
+                torque_recorder.record(self.torques)
         for field in (self.wheel_force, self.wheel_duty, self.wheel_slip, self.wheel_saturation):
             field /= self.cfg.control.decimation
         self.post_physics_step()

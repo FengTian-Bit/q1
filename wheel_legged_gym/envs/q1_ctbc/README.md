@@ -103,6 +103,8 @@ python wheel_legged_gym/scripts/play.py --task=q1_ctbc --load_run=RUN_NAME --che
 
 该入口自动测试 5 cm 单阶、0.5 m 踏面、0.2 m/s、纯策略模式，默认累计 100 个回合；有 viewer 时可观察，不提供 Q1 键盘遥控。需要指定楼梯参数、样本数或比较指导时使用独立评估脚本；不带 `--headless` 即可显示 viewer。
 
+播放时默认记录第 0 台机器人的六个关节力矩。点击 viewer 的关闭按钮、按 Esc / Ctrl+C 或正常结束后，会自动生成 `evaluations/ctbc_时间戳_h5cm_policy_torques.png`，并在终端打印 `Q1 torque PNG:` 及完整路径；对应 JSON 的 `torque_plots` 字段也会保存图片路径。图中左右两列分别是左右腿，三行分别是大腿、小腿和轮子，横轴为累计仿真时间（秒），纵轴为施加到仿真器的电机力矩（N·m），红色虚线为正负力矩限值。每个物理步记录一次，并在回合重置清零前保存该步数据。图片直接写盘，不弹出绘图窗口。尚未完成任何物理步就关闭，或使用 `--export_only` 时，不生成无数据的力矩图。独立批量评估入口默认不记录力矩。
+
 `play.py --task=q1_ctbc` 在加载检查点后、评估循环前自动导出 ONNX，并打印 `Exported Q1 CTBC policy as ONNX:` 和文件绝对路径。文件位于该运行目录的 `exported/model_模型编号/policy.onnx`，评估中按 Ctrl+C 不影响已经完成的导出。独立评估脚本默认只评估，可加 `--export_onnx` 同时导出。
 
 只需导出时，可以跳过评估回合并在导出后退出（仍需初始化 Isaac Gym 环境）：
