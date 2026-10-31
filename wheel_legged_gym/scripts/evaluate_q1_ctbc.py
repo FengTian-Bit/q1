@@ -172,7 +172,7 @@ def evaluation_arguments():
     ]
 
 
-def evaluate(args):
+def evaluate(args, export_policy=False):
     # Isaac Gym must precede torch imports. Importing pure helpers needs neither.
     import isaacgym  # noqa: F401
     import torch
@@ -185,6 +185,8 @@ def evaluate(args):
 
     if args.task != "q1_ctbc":
         raise ValueError("This evaluator requires --task=q1_ctbc")
+    export_only = getattr(args, "export_only", False)
+    export_policy = export_policy or export_only or getattr(args, "export_onnx", False)
     heights = parse_heights(getattr(args, "heights", "5"))
     tread, steps = getattr(args, "tread", 0.5), getattr(args, "steps", 1)
     episodes, speed = getattr(args, "episodes", 100), getattr(args, "speed", 0.2)
@@ -219,7 +221,7 @@ def evaluate(args):
                   timestamp_utc=datetime.now(timezone.utc).isoformat(),
                   geometry_units="metres", speed_mps=speed, yaw_rate=0.0,
                   num_envs=num_envs, requested_episodes_per_condition=episodes,
-                  config_snapshot=str(snapshot_path), results=[])
+                  config_snapshot=str(snapshot_path), export_only=export_only, results=[])
     output = getattr(args, "output", None)
     if output is None:
         output = checkpoint.parent / "evaluations" / ("ctbc_" + datetime.now().strftime("%Y%m%d_%H%M%S_%f") + ".json")
@@ -237,6 +239,20 @@ def evaluate(args):
                     env, _ = task_registry.make_env("q1_ctbc", args=trial_args, env_cfg=cfg)
                     runner = OnPolicyRunner(env, class_to_dict(train_cfg), log_dir=None, device=args.rl_device)
                     runner.load(str(checkpoint), load_optimizer=False)
+                    # Export once per checkpoint, before any potentially long
+                    # rollout. Later interrupts cannot prevent this artifact.
+                    if export_policy and "policy_onnx" not in report:
+                        from wheel_legged_gym.rsl_rl.modules.policy_exporter import export_policy_as_onnx
+                        policy_path = checkpoint.parent / "exported" / checkpoint.stem / "policy.onnx"
+                        policy_path = export_policy_as_onnx(
+                            runner.alg.actor_critic, policy_path,
+                            num_observations=cfg.env.num_observations,
+                            num_history=cfg.env.num_observations * cfg.env.obs_history_length,
+                        )
+                        report["policy_onnx"] = str(policy_path)
+                        print("Exported Q1 CTBC policy as ONNX:", policy_path, flush=True)
+                    if export_only:
+                        return report
                     # Force a diagnostic mode after load, which restores cumulative iteration.
                     env.set_guidance_mode("on" if guided else "off")
                     policy = runner.get_inference_policy(device=env.device)
@@ -270,10 +286,11 @@ def evaluate(args):
                 # Preserve completed conditions even if a later simulation cannot start.
                 output.write_text(json.dumps(report, indent=2), encoding="utf-8")
     finally:
-        report["complete"] = (len(report["results"]) == len(heights) * len(conditions)
-                              and all(row["complete"] for row in report["results"]))
+        report["complete"] = ("policy_onnx" in report if export_only else (
+            len(report["results"]) == len(heights) * len(conditions)
+            and all(row["complete"] for row in report["results"])))
         output.write_text(json.dumps(report, indent=2), encoding="utf-8")
-        print("Q1 CTBC evaluation JSON:", output, flush=True)
+        print("Q1 CTBC export JSON:" if export_only else "Q1 CTBC evaluation JSON:", output, flush=True)
     return report
 
 

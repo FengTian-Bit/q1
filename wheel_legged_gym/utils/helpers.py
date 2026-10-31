@@ -166,6 +166,10 @@ def update_cfg_from_args(env_cfg, cfg_train, args):
 
 def get_args(extra_custom_parameters=None, default_task="anymal_c_flat"):
     custom_parameters = [
+        {"name": "--export_onnx", "action": "store_true", "default": False,
+         "help": "q1_ctbc: export ONNX before evaluation (play.py does this by default)."},
+        {"name": "--export_only", "action": "store_true", "default": False,
+         "help": "q1_ctbc: export ONNX after loading the checkpoint and exit without evaluation rollouts."},
         {"name": "--logger", "type": str, "choices": ["swanlab", "tensorboard"], "default": None,
          "help": "Override training logger; q1 defaults to SwanLab."},
         {"name": "--swanlab_mode", "type": str, "choices": ["online", "offline"], "default": None,

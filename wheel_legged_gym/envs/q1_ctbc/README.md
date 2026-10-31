@@ -103,6 +103,16 @@ python wheel_legged_gym/scripts/play.py --task=q1_ctbc --load_run=RUN_NAME --che
 
 该入口自动测试 5 cm 单阶、0.5 m 踏面、0.2 m/s、纯策略模式，默认累计 100 个回合；有 viewer 时可观察，不提供 Q1 键盘遥控。需要指定楼梯参数、样本数或比较指导时使用独立评估脚本；不带 `--headless` 即可显示 viewer。
 
+`play.py --task=q1_ctbc` 在加载检查点后、评估循环前自动导出 ONNX，并打印 `Exported Q1 CTBC policy as ONNX:` 和文件绝对路径。文件位于该运行目录的 `exported/model_模型编号/policy.onnx`，评估中按 Ctrl+C 不影响已经完成的导出。独立评估脚本默认只评估，可加 `--export_onnx` 同时导出。
+
+只需导出时，可以跳过评估回合并在导出后退出（仍需初始化 Isaac Gym 环境）：
+
+```bash
+python wheel_legged_gym/scripts/play.py --task=q1_ctbc --load_run=RUN_NAME --checkpoint=-1 --num_envs=1 --headless --export_only
+```
+
+导出包含历史编码器和 actor，输入为 `obs: [batch, 31]` 与 `obs_history: [batch, 155]`，输出 `actions: [batch, 6]`，支持动态 batch。历史是按时间从旧到新排列的 5 帧已归一化观测，最新一帧为当前观测；重置时以首帧重复填充。动作顺序为左大腿、左小腿、左轮、右大腿、右小腿、右轮，输出为策略原始动作。观测缩放、动作裁剪、腿/轮动作尺度、前馈和 PD 控制仍需按该检查点的 `resolved_config.json` 与环境代码实现；ONNX 不包含 CTBC 指导或控制器。导出依赖 `onnx`（项目安装依赖已列出），缺失时运行 `python -m pip install onnx`。`--export_only` 的 JSON 标记 `export_only=true`，其中 `complete` 表示导出完成，`results` 为空，不表示完成了爬阶评估。
+
 ## 验证范围
 
 CPU 回归覆盖接触/相位、前馈退火与恢复、动作历史、方向楼梯与成功课程，以及 reset 后的评估统计；高阶段还检查真实软件关节限位、16 cm 参考未被裁剪、旧动作映射保持一致及 20 cm 目标几何可达。它们不模拟真实轮子接触，也不证明新高阶段的动力学或实机能力。本次修改尚未在 Isaac Gym 中完成实际训练或 20 cm 成功率评估；请分别验收指导开启和关闭后的表现。

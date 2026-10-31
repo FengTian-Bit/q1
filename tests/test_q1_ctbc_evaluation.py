@@ -1,5 +1,6 @@
 """Evaluation accounting tests, independent of Isaac Gym and contact simulation."""
 import importlib.util
+import ast
 import builtins
 from contextlib import nullcontext, redirect_stdout
 import io
@@ -10,7 +11,7 @@ import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "wheel_legged_gym/scripts/evaluate_q1_ctbc.py"
@@ -23,6 +24,18 @@ RUN_SPEC.loader.exec_module(RUN_CONFIG)
 
 
 class CTBCEvaluationTests(unittest.TestCase):
+    def test_play_exports_ctbc_by_default(self):
+        tree = ast.parse(SCRIPT.with_name("play.py").read_text(encoding="utf-8"))
+        play = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "play")
+        namespace = {}
+        exec(compile(ast.Module(body=[play], type_ignores=[]), "play.py", "exec"), namespace)
+        evaluate = Mock(return_value={"complete": True})
+        args = SimpleNamespace(task="q1_ctbc")
+        with patch.dict(sys.modules, {
+                "wheel_legged_gym.scripts.evaluate_q1_ctbc": SimpleNamespace(evaluate=evaluate)}):
+            self.assertEqual(namespace["play"](args), {"complete": True})
+        evaluate.assert_called_once_with(args, export_policy=True)
+
     def test_cli_initializes_registry_before_importing_utils(self):
         # A preloaded/mock registry hides the standalone CLI cycle. Reproduce
         # the cold-start dependency: utils cannot finish until envs registers.
@@ -192,6 +205,7 @@ class CTBCEvaluationTests(unittest.TestCase):
                 pass
 
             def step(self, action):
+                calls.append("step")
                 return None, None, None, [True, True, True], {"ctbc_episode": {
                     "env_ids": [0, 1, 2], "success": [True, False, True],
                     "physical_failure": [False, False, False], "timeout": [False, True, False]}}, None
@@ -199,6 +213,7 @@ class CTBCEvaluationTests(unittest.TestCase):
         class Runner:
             def __init__(self, env, config, log_dir, device):
                 self.env = env
+                self.alg = SimpleNamespace(actor_critic=object())
                 self.asserted_config = config
                 calls.append(("runner", log_dir, config["policy"]["hidden"]))
 
@@ -269,15 +284,54 @@ class CTBCEvaluationTests(unittest.TestCase):
                 self.assertEqual(row["leg_action_limits"], [.7, 1.35, .7, 1.35])
             self.assertEqual(report["results"][0]["checkpoint_iteration"], 12345)
             self.assertEqual(json.loads(Path(args.output).read_text())["seed"], 7)
-            self.assertEqual(calls, [("runner", None, 128), ("load", False), ("guidance", "off"), "destroy",
-                                     ("runner", None, 128), ("load", False), ("guidance", "on"), "destroy"])
+            self.assertEqual(calls, [("runner", None, 128), ("load", False), ("guidance", "off"), "step", "destroy",
+                                     ("runner", None, 128), ("load", False), ("guidance", "on"), "step", "destroy"])
+
+            def export_policy(policy, path, num_observations, num_history):
+                calls.append(("export", num_observations, num_history))
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"export fixture")
+                return path
+
+            modules["wheel_legged_gym.rsl_rl.modules.policy_exporter"] = SimpleNamespace(
+                export_policy_as_onnx=export_policy)
+            calls.clear()
+            with patch.dict(sys.modules, modules), redirect_stdout(io.StringIO()):
+                report = EVAL.evaluate(args, export_policy=True)
+            exported_path = checkpoint.parent / "exported" / "model_12345" / "policy.onnx"
+            self.assertEqual(report["policy_onnx"], str(exported_path))
+            self.assertTrue(exported_path.exists())
+            self.assertEqual(calls.count(("export", 31, 155)), 1)
+            self.assertLess(calls.index(("load", False)), calls.index(("export", 31, 155)))
+            self.assertLess(calls.index(("export", 31, 155)), calls.index("step"))
+
+            calls.clear()
+            args.export_only = True
+            with patch.dict(sys.modules, modules), redirect_stdout(io.StringIO()):
+                report = EVAL.evaluate(args)
+            self.assertTrue(report["complete"])
+            self.assertTrue(report["export_only"])
+            self.assertEqual(report["results"], [])
+            self.assertEqual(calls, [("runner", None, 128), ("load", False), ("export", 31, 155), "destroy"])
+
+            calls.clear()
+            args.export_only = False
+            args.export_onnx = True
+            with patch.dict(sys.modules, modules), redirect_stdout(io.StringIO()), \
+                    patch.object(Env, "step", side_effect=KeyboardInterrupt), self.assertRaises(KeyboardInterrupt):
+                EVAL.evaluate(args)
+            interrupted = json.loads(Path(args.output).read_text())
+            self.assertFalse(interrupted["complete"])
+            self.assertEqual(interrupted["policy_onnx"], str(exported_path))
+            self.assertTrue(exported_path.exists())
+            self.assertEqual(calls.count("destroy"), 1)
             # A Q1 checkpoint can have the same actor dimensions; reject its
             # missing CTBC contract before creating another environment.
             del saved["env"]["ctbc"]
             config_path.write_text(json.dumps(saved), encoding="utf-8")
             with patch.dict(sys.modules, modules), self.assertRaisesRegex(ValueError, "q1 checkpoints"):
                 EVAL.evaluate(args)
-            self.assertEqual(calls.count("destroy"), 2)
+            self.assertEqual(calls.count("destroy"), 1)
 
 
 if __name__ == "__main__":
