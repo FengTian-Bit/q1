@@ -41,7 +41,7 @@ import torch
 
 
 def play(args):
-    if args.task == "q1_ctbc":
+    if args.task in ("q1_ctbc", "q1_ctbc_highcom"):
         from wheel_legged_gym.scripts.evaluate_q1_ctbc import evaluate
         return evaluate(args, export_policy=True, plot_torques=True)
     if args.task == "q1":

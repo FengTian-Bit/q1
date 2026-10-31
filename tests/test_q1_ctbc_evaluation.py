@@ -30,11 +30,14 @@ class CTBCEvaluationTests(unittest.TestCase):
         namespace = {}
         exec(compile(ast.Module(body=[play], type_ignores=[]), "play.py", "exec"), namespace)
         evaluate = Mock(return_value={"complete": True})
-        args = SimpleNamespace(task="q1_ctbc")
-        with patch.dict(sys.modules, {
-                "wheel_legged_gym.scripts.evaluate_q1_ctbc": SimpleNamespace(evaluate=evaluate)}):
-            self.assertEqual(namespace["play"](args), {"complete": True})
-        evaluate.assert_called_once_with(args, export_policy=True, plot_torques=True)
+        for task in ("q1_ctbc", "q1_ctbc_highcom"):
+            with self.subTest(task=task):
+                evaluate.reset_mock()
+                args = SimpleNamespace(task=task)
+                with patch.dict(sys.modules, {
+                        "wheel_legged_gym.scripts.evaluate_q1_ctbc": SimpleNamespace(evaluate=evaluate)}):
+                    self.assertEqual(namespace["play"](args), {"complete": True})
+                evaluate.assert_called_once_with(args, export_policy=True, plot_torques=True)
 
     def test_cli_initializes_registry_before_importing_utils(self):
         # A preloaded/mock registry hides the standalone CLI cycle. Reproduce
@@ -393,13 +396,31 @@ class CTBCEvaluationTests(unittest.TestCase):
                 report = EVAL.evaluate(args, plot_torques=True)
             self.assertNotIn("torque_plots", report)
             self.assertEqual(calls, [("runner", None, 128), ("load", False), ("export", 31, 155), "destroy"])
+            # The high-COM task must select its own registry entry, snapshot
+            # contract and report identity rather than silently using q1_ctbc.
+            calls.clear()
+            saved["task"] = args.task = "q1_ctbc_highcom"
+            saved["env"]["ctbc"]["stance_profile"] = "highcom_knee45_v1"
+            config_path.write_text(json.dumps(saved), encoding="utf-8")
+            registry = modules["wheel_legged_gym.utils"].task_registry
+            registry.get_cfgs = Mock(return_value=(cfg, train))
+            registry.make_env = Mock(side_effect=make_env)
+            args.export_only = False
+            with patch.dict(sys.modules, modules), redirect_stdout(io.StringIO()):
+                report = EVAL.evaluate(args)
+            self.assertTrue(report["complete"])
+            self.assertEqual(report["task"], "q1_ctbc_highcom")
+            registry.get_cfgs.assert_called_once_with("q1_ctbc_highcom")
+            self.assertEqual([call.args[0] for call in registry.make_env.call_args_list],
+                             ["q1_ctbc_highcom", "q1_ctbc_highcom"])
+            calls.clear()
             # A Q1 checkpoint can have the same actor dimensions; reject its
             # missing CTBC contract before creating another environment.
             del saved["env"]["ctbc"]
             config_path.write_text(json.dumps(saved), encoding="utf-8")
             with patch.dict(sys.modules, modules), self.assertRaisesRegex(ValueError, "q1 checkpoints"):
                 EVAL.evaluate(args)
-            self.assertEqual(calls.count("destroy"), 1)
+            self.assertEqual(calls.count("destroy"), 0)
 
 
 if __name__ == "__main__":

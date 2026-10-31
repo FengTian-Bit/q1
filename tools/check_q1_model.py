@@ -41,7 +41,7 @@ def stl_vertices(path):
     return np.frombuffer(raw, dtype=dtype, offset=84, count=count)["vertices"].reshape(-1, 3)
 
 
-def check(urdf, mesh_root=None):
+def check(urdf, mesh_root=None, *, initial_angles=None, initial_height=0.402):
     robot = ET.parse(urdf).getroot()
     links = {link.get("name"): link for link in robot.findall("link")}
     joints = robot.findall("joint")
@@ -54,9 +54,15 @@ def check(urdf, mesh_root=None):
         raise ValueError("Expected one connected root, got {}".format(roots))
     root = next(iter(roots))
     poses = {root: np.eye(4)}
-    poses[root][2, 3] = 0.402
+    if not np.isfinite(initial_height):
+        raise ValueError("Initial root height must be finite")
+    poses[root][2, 3] = initial_height
     q = {name: angle for side in ("L", "R") for name, angle in (
         (side+"_thigh_joint", 0.6), (side+"_calf_joint", -1.2), (side+"_foot_joint", 0.0))}
+    if initial_angles is not None:
+        if set(initial_angles) != set(q) or not np.isfinite(list(initial_angles.values())).all():
+            raise ValueError("Initial angles must contain Q1's six finite named joint positions")
+        q = dict(initial_angles)
     pending = list(joints)
     joint_summary = []
     while pending:
@@ -156,7 +162,8 @@ def check(urdf, mesh_root=None):
                              principal_relative_difference=(np.array(right["principal_kg_m2"])/left["principal_kg_m2"]-1).tolist()))
     return dict(status="passed_static_checks" if not errors else "failed", errors=errors, warnings=warnings,
                 link_count=len(links), joint_count=len(joints), active_joint_count=len(q), fixed_joint_count=len(joints)-len(q),
-                total_mass_kg=total_mass, initial_base_z_m=0.402, initial_total_com_m=(weighted_com/total_mass).tolist(),
+                total_mass_kg=total_mass, initial_base_z_m=initial_height,
+                initial_total_com_m=(weighted_com/total_mass).tolist(),
                 joints=joint_summary, inertias=inertia_rows, symmetry=symmetry, collisions=collisions, meshes=meshes,
                 limitations=["Static primitive ground clearance only; no Isaac Gym import, contact simulation or viewer check.",
                              "Inertia small/large screening uses mesh dimensions, radius bounds and left/right principal comparisons; CAD mass distribution is unavailable, so a universal lower inertia bound cannot be certified.",
@@ -168,9 +175,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--urdf", type=Path, default=Path(__file__).resolve().parents[1]/"resources/robots/q1/urdf/q1.urdf")
     parser.add_argument("--mesh-root", type=Path)
+    parser.add_argument("--thigh-angle", type=float, default=0.6)
+    parser.add_argument("--calf-angle", type=float, default=-1.2)
+    parser.add_argument("--initial-height", type=float, default=0.402)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    report = check(args.urdf, args.mesh_root)
+    angles = {side+"_"+joint+"_joint": angle for side in ("L", "R")
+              for joint, angle in (("thigh", args.thigh_angle), ("calf", args.calf_angle), ("foot", 0.0))}
+    report = check(args.urdf, args.mesh_root, initial_angles=angles, initial_height=args.initial_height)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2, ensure_ascii=False)+"\n", encoding="utf-8")
     print(json.dumps({key: report[key] for key in ("status", "link_count", "active_joint_count", "total_mass_kg", "errors", "warnings")}, indent=2))

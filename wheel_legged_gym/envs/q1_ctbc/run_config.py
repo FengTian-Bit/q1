@@ -18,16 +18,18 @@ def apply_config(target, values):
             setattr(target, key, value)
 
 
-def validate_ctbc_snapshot(snapshot):
+def validate_ctbc_snapshot(snapshot, task_name="q1_ctbc"):
     """Reject other tasks and incomplete observation/action contracts explicitly."""
-    error = "Cannot resume q1_ctbc: incompatible resolved_config.json; "
+    error = "Cannot resume {}: incompatible resolved_config.json; ".format(task_name)
     if not isinstance(snapshot, dict):
         raise ValueError(error + "the snapshot must be an object")
     env, train = snapshot.get("env"), snapshot.get("train")
     if not isinstance(env, dict) or not isinstance(env.get("ctbc"), dict) or not isinstance(train, dict):
         raise ValueError(error + "a q1_ctbc snapshot with env.ctbc and train is required; q1 checkpoints are not resumable")
-    if snapshot.get("task", "q1_ctbc") != "q1_ctbc":
-        raise ValueError(error + "the saved task is not q1_ctbc")
+    if snapshot.get("task", "q1_ctbc") != task_name:
+        raise ValueError(error + "the saved task is not " + task_name)
+    if task_name == "q1_ctbc_highcom" and env["ctbc"].get("stance_profile") != "highcom_knee45_v1":
+        raise ValueError(error + "the saved high-COM stance profile is missing or incompatible")
     expected = {"num_observations": 31, "num_privileged_obs": 151,
                 "obs_history_length": 5, "num_actions": 6}
     dimensions = env.get("env", {})
@@ -80,13 +82,15 @@ def _load_checkpoint_iteration(checkpoint):
     return iteration
 
 
-def prepare_ctbc_training(env_cfg, train_cfg, args, root_dir, get_load_path):
+def prepare_ctbc_training(env_cfg, train_cfg, args, root_dir, get_load_path,
+                          *, task_name="q1_ctbc", stage_configurator=None):
     """Restore a checkpoint config, then apply any explicitly requested stage.
 
     Other CLI overrides remain untouched for the registry's standard override
     mechanism. Resolving the checkpoint now prevents a later "latest" lookup
     from silently selecting a different run or model.
     """
+    configure_stage = stage_configurator or _configure_stage
     requested_stage = getattr(args, "ctbc_stage", None)
     if requested_stage is not None and requested_stage not in STAGES:
         raise ValueError("Unknown CTBC stage: {}".format(requested_stage))
@@ -100,17 +104,17 @@ def prepare_ctbc_training(env_cfg, train_cfg, args, root_dir, get_load_path):
                                         load_run=run, checkpoint=checkpoint_number)).resolve()
         match = re.fullmatch(r"model_(0|[1-9]\d*)\.pt", checkpoint.name)
         if match is None:
-            raise ValueError("Cannot resume q1_ctbc: expected a model_N.pt checkpoint, found " + str(checkpoint))
+            raise ValueError("Cannot resume {}: expected a model_N.pt checkpoint, found ".format(task_name) + str(checkpoint))
         if not checkpoint.is_file():
-            raise FileNotFoundError("Cannot resume q1_ctbc: checkpoint does not exist: " + str(checkpoint))
+            raise FileNotFoundError("Cannot resume {}: checkpoint does not exist: ".format(task_name) + str(checkpoint))
         config_path = checkpoint.parent / "resolved_config.json"
         if not config_path.is_file():
-            raise FileNotFoundError("Cannot resume q1_ctbc without its saved configuration: " + str(config_path))
+            raise FileNotFoundError("Cannot resume {} without its saved configuration: ".format(task_name) + str(config_path))
         try:
             snapshot = json.loads(config_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
-            raise ValueError("Cannot read q1_ctbc configuration: " + str(config_path)) from exc
-        saved_stage = validate_ctbc_snapshot(snapshot)
+            raise ValueError("Cannot read {} configuration: ".format(task_name) + str(config_path)) from exc
+        saved_stage = validate_ctbc_snapshot(snapshot, task_name=task_name)
         apply_config(env_cfg, snapshot["env"])
         apply_config(train_cfg, snapshot["train"])
         if "feedforward_start_iteration" not in snapshot["env"]["ctbc"]:
@@ -121,7 +125,7 @@ def prepare_ctbc_training(env_cfg, train_cfg, args, root_dir, get_load_path):
         # An explicit stage reapplies current curriculum presets even when its
         # name is unchanged. Omitting it preserves all saved tuning parameters.
         if requested_stage is not None:
-            _configure_stage(env_cfg, stage)
+            configure_stage(env_cfg, stage)
         if stage == "stairs20":
             if saved_stage != "stairs20":
                 # Start a fresh guidance schedule at the loaded policy's real
@@ -145,7 +149,7 @@ def prepare_ctbc_training(env_cfg, train_cfg, args, root_dir, get_load_path):
         train_cfg.runner.resume = True
     else:
         stage = requested_stage or "single"
-        _configure_stage(env_cfg, stage)
+        configure_stage(env_cfg, stage)
         if stage == "stairs20":
             env_cfg.ctbc.feedforward_start_iteration = 0
     args.ctbc_stage = stage

@@ -268,18 +268,23 @@ class Q1Tests(unittest.TestCase):
         load_code("wheel_legged_gym/envs/wheel_legged_vmc_flat/wheel_legged_vmc_flat_config.py", namespace)
         load_code("wheel_legged_gym/envs/q1_ctbc/q1_ctbc_config.py", namespace)
         load_code("wheel_legged_gym/envs/q1_ctbc/q1_ctbc.py", namespace)
+        load_code("wheel_legged_gym/envs/q1_ctbc_highcom/q1_ctbc_highcom_config.py", namespace)
+        load_code("wheel_legged_gym/envs/q1_ctbc_highcom/q1_ctbc_highcom.py", namespace)
         namespace["deepcopy"] = __import__("copy").deepcopy
         load_code("wheel_legged_gym/envs/q1/q1_t0_config.py", namespace)
         load_code("wheel_legged_gym/envs/q1/q1_t0.py", namespace)
         namespace["LeggedRobotVMC"] = object
         namespace["task_registry"] = SimpleNamespace(register=lambda name, cls, cfg, train: registered.update({name: (cls, cfg, train)}))
         load_code("wheel_legged_gym/envs/__init__.py", namespace)
-        self.assertEqual(set(registered), {"wheel_legged", "wheel_legged_vmc", "wheel_legged_vmc_flat", "q1_flat", "q1", "q1_ctbc"})
+        self.assertEqual(set(registered), {"wheel_legged", "wheel_legged_vmc", "wheel_legged_vmc_flat", "q1_flat", "q1", "q1_ctbc", "q1_ctbc_highcom"})
         self.assertIs(registered["q1_flat"][0], Q1Flat)
         self.assertIs(registered["q1"][0], namespace["Q1T0CTBC"])
         self.assertTrue(issubclass(registered["q1"][0], namespace["Q1CTBC"]))
         self.assertEqual(registered["q1"][1].terrain.generation_mode, "t0")
         self.assertIs(registered["q1_ctbc"][0], namespace["Q1CTBC"])
+        self.assertIs(registered["q1_ctbc_highcom"][0], namespace["Q1CTBCHighCOM"])
+        self.assertAlmostEqual(registered["q1_ctbc_highcom"][1].commands.ranges.height[0], .4360150397)
+        self.assertEqual(registered["q1_ctbc"][1].init_state.default_joint_angles["L_thigh_joint"], .6)
         self.assertEqual(registered["wheel_legged"][1].asset.name, "WheelLegged")
 
     def test_playback_runs_across_inference_mode_frames(self):

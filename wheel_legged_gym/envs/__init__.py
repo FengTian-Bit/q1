@@ -74,6 +74,12 @@ from .q1_ctbc.q1_ctbc_config import Q1CTBCCfg, Q1CTBCCfgPPO
 
 task_registry.register("q1_ctbc", Q1CTBC, Q1CTBCCfg(), Q1CTBCCfgPPO())
 
+from .q1_ctbc_highcom.q1_ctbc_highcom import Q1CTBCHighCOM
+from .q1_ctbc_highcom.q1_ctbc_highcom_config import Q1CTBCHighCOMCfg, Q1CTBCHighCOMCfgPPO
+
+task_registry.register("q1_ctbc_highcom", Q1CTBCHighCOM,
+                       Q1CTBCHighCOMCfg(), Q1CTBCHighCOMCfgPPO())
+
 from .q1.q1_t0 import Q1T0CTBC
 from .q1.q1_t0_config import Q1T0Cfg, Q1T0CfgPPO
 

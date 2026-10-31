@@ -52,6 +52,12 @@ def train(args):
         env_cfg, ctbc_train_cfg = task_registry.get_cfgs(args.task)
         prepare_ctbc_training(env_cfg, ctbc_train_cfg, args,
                               WHEEL_LEGGED_GYM_ROOT_DIR, get_load_path)
+    if args.task == "q1_ctbc_highcom":
+        from wheel_legged_gym.envs.q1_ctbc_highcom.run_config import prepare_highcom_training
+        from wheel_legged_gym.utils.helpers import get_load_path
+        env_cfg, ctbc_train_cfg = task_registry.get_cfgs(args.task)
+        prepare_highcom_training(env_cfg, ctbc_train_cfg, args,
+                                 WHEEL_LEGGED_GYM_ROOT_DIR, get_load_path)
     if args.task == "q1_flat":
         env_cfg, q1_train_cfg = task_registry.get_cfgs(args.task)
         args.q1_stage = args.q1_stage or "low_speed"
@@ -67,27 +73,31 @@ def train(args):
         env=env, name=args.task, args=args
     )
     task_registry.save_cfgs(name=args.task)
-    if args.task in ("q1_flat", "q1", "q1_ctbc"):
+    if args.task in ("q1_flat", "q1", "q1_ctbc", "q1_ctbc_highcom"):
         import json
         from shutil import copyfile
         from wheel_legged_gym.utils.helpers import class_to_dict
         with open(os.path.join(task_registry.log_dir, "resolved_config.json"), "w") as output:
             stage = ("t0" if args.task == "q1" else
-                     args.ctbc_stage if args.task == "q1_ctbc" else args.q1_stage)
+                     args.ctbc_stage if args.task in ("q1_ctbc", "q1_ctbc_highcom") else args.q1_stage)
             json.dump({"task": args.task, "stage": stage, "env": class_to_dict(env_cfg),
                        "train": class_to_dict(train_cfg)}, output, indent=2)
         asset_path = env_cfg.asset.file.format(WHEEL_LEGGED_GYM_ROOT_DIR=WHEEL_LEGGED_GYM_ROOT_DIR)
         copyfile(asset_path, os.path.join(task_registry.log_dir, "q1.urdf"))
-        if args.task in ("q1", "q1_ctbc"):
+        if args.task in ("q1", "q1_ctbc", "q1_ctbc_highcom"):
             for filename in ("q1_flat.py", "q1_flat_config.py"):
                 copyfile(os.path.join(WHEEL_LEGGED_GYM_ROOT_DIR, "wheel_legged_gym", "envs", "q1_flat", filename),
                          os.path.join(task_registry.log_dir, "parent_"+filename))
-        if args.task in ("q1", "q1_ctbc"):
+        if args.task in ("q1", "q1_ctbc", "q1_ctbc_highcom"):
             for folder, filenames in (("q1", ("q1.py", "q1_config.py")),
                                       ("q1_ctbc", ("q1_ctbc.py", "q1_ctbc_config.py", "guidance.py", "terrain.py", "run_config.py"))):
                 for filename in filenames:
                     copyfile(os.path.join(WHEEL_LEGGED_GYM_ROOT_DIR, "wheel_legged_gym", "envs", folder, filename),
                              os.path.join(task_registry.log_dir, "source_"+filename))
+        if args.task == "q1_ctbc_highcom":
+            copyfile(os.path.join(WHEEL_LEGGED_GYM_ROOT_DIR, "wheel_legged_gym", "envs",
+                                  "q1_ctbc_highcom", "run_config.py"),
+                     os.path.join(task_registry.log_dir, "source_highcom_run_config.py"))
         if args.task == "q1":
             for filename in ("q1_t0.py", "q1_t0_config.py", "t0_terrain.py",
                              "t0_curriculum.py", "t0_commands.py", "t0_run_config.py"):
@@ -95,7 +105,7 @@ def train(args):
                          os.path.join(task_registry.log_dir, "source_"+filename))
     ppo_runner.learn(
         num_learning_iterations=train_cfg.runner.max_iterations,
-        init_at_random_ep_len=args.task != "q1_ctbc",
+        init_at_random_ep_len=args.task not in ("q1_ctbc", "q1_ctbc_highcom"),
     )
 
 

@@ -183,8 +183,8 @@ def evaluate(args, export_policy=False, plot_torques=False):
     from wheel_legged_gym.envs.q1_ctbc.run_config import apply_config, validate_ctbc_snapshot
     from wheel_legged_gym.rsl_rl.runners.on_policy_runner import OnPolicyRunner
 
-    if args.task != "q1_ctbc":
-        raise ValueError("This evaluator requires --task=q1_ctbc")
+    if args.task not in ("q1_ctbc", "q1_ctbc_highcom"):
+        raise ValueError("This evaluator requires --task=q1_ctbc or --task=q1_ctbc_highcom")
     export_only = getattr(args, "export_only", False)
     export_policy = export_policy or export_only or getattr(args, "export_onnx", False)
     heights = parse_heights(getattr(args, "heights", "5"))
@@ -202,7 +202,7 @@ def evaluate(args, export_policy=False, plot_torques=False):
     num_envs = 64 if args.num_envs is None else args.num_envs
     if num_envs <= 0:
         raise ValueError("--num_envs must be positive")
-    base_cfg, base_train = (deepcopy(item) for item in task_registry.get_cfgs("q1_ctbc"))
+    base_cfg, base_train = (deepcopy(item) for item in task_registry.get_cfgs(args.task))
     experiment = args.experiment_name or base_train.runner.experiment_name
     checkpoint = Path(get_load_path(str(Path(WHEEL_LEGGED_GYM_ROOT_DIR) / "logs" / experiment),
                                    args.load_run if args.load_run is not None else -1,
@@ -210,14 +210,14 @@ def evaluate(args, export_policy=False, plot_torques=False):
     snapshot_path = checkpoint.parent / "resolved_config.json"
     if snapshot_path.exists():
         snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
-        validate_ctbc_snapshot(snapshot)
+        validate_ctbc_snapshot(snapshot, task_name=args.task)
         apply_config(base_cfg, snapshot["env"])
         apply_config(base_train, snapshot["train"])
     else:
         raise FileNotFoundError("Evaluation requires the checkpoint's resolved_config.json: " + str(snapshot_path))
     seed = args.seed if args.seed is not None else base_train.seed
     conditions = [False, True] if guidance == "both" else [guidance == "on"]
-    report = dict(task="q1_ctbc", checkpoint=str(checkpoint), seed=seed,
+    report = dict(task=args.task, checkpoint=str(checkpoint), seed=seed,
                   timestamp_utc=datetime.now(timezone.utc).isoformat(),
                   geometry_units="metres", speed_mps=speed, yaw_rate=0.0,
                   num_envs=num_envs, requested_episodes_per_condition=episodes,
@@ -236,7 +236,7 @@ def evaluate(args, export_policy=False, plot_torques=False):
                 trial_args.num_envs = num_envs
                 env, torque_recorder = None, None
                 try:
-                    env, _ = task_registry.make_env("q1_ctbc", args=trial_args, env_cfg=cfg)
+                    env, _ = task_registry.make_env(args.task, args=trial_args, env_cfg=cfg)
                     runner = OnPolicyRunner(env, class_to_dict(train_cfg), log_dir=None, device=args.rl_device)
                     runner.load(str(checkpoint), load_optimizer=False)
                     # Export once per checkpoint, before any potentially long
