@@ -32,14 +32,15 @@ T0 最高难度行约 24 cm 单阶，踏面网格取整通常为 20 cm；`stairs
 
 ## q1_ctbc 盲上楼梯专项
 
-新增独立任务 `q1_ctbc`：以定向单台阶训练接触后交替抬腿，提供训练前馈、累计轮数退火、
-真实落台成功判据及专项课程。默认 4096 环境、30000 轮，先学习 2.5–8 cm 单阶，
-再通过 `--ctbc_stage=stairs` 训练 4–12 cm 连续三阶；`q1` 使用上述 T0 混合地形课程。
+独立任务 `q1_ctbc` 提供定向上楼、接触后交替抬腿指导、累计轮数退火和真实落台成功判据。
+默认对齐桌面 `log` 保存的训练：1024 环境、30000 轮、`stairs` 阶段，4–12 cm 连续三阶。
+显式指定 `--ctbc_stage=single` 仍可训练 2.5–8 cm 单阶；`q1` 使用上述 T0 混合地形课程。
+详细差异见 [训练对齐记录](docs/q1_ctbc_training_alignment.md)。
 
 ```bash
-python wheel_legged_gym/scripts/train.py --task=q1_ctbc --ctbc_stage=single --headless
+python wheel_legged_gym/scripts/train.py --task=q1_ctbc --headless
 # RUN_NAME 和 CHECKPOINT 替换为本任务的实际运行目录和模型编号。
-python wheel_legged_gym/scripts/evaluate_q1_ctbc.py --load_run=RUN_NAME --checkpoint=CHECKPOINT --headless --heights=2.5,5,8 --guidance=both
+python wheel_legged_gym/scripts/evaluate_q1_ctbc.py --load_run=RUN_NAME --checkpoint=CHECKPOINT --headless --heights=4,8,12 --steps=3 --guidance=both
 ```
 
 正式验收使用 `--guidance=off` 的纯网络成功率；CPU 测试尚不能证明物理上楼能力。

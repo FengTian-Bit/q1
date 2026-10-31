@@ -109,7 +109,7 @@ class CTBCTerrainTests(unittest.TestCase):
         first = make_terrain()
         second = make_terrain(curriculum=False)
         np.testing.assert_array_equal(first.height_field_raw, second.height_field_raw)
-        cfg = Config().terrain
+        cfg = configure(Config(), "single").terrain
         terrain = Terrain(cfg, 32)
         self.assertEqual(terrain.vertices.shape, (3, 3))
         np.testing.assert_array_equal(first.height_field_raw, terrain.height_field_raw)
@@ -140,7 +140,7 @@ class CTBCTerrainTests(unittest.TestCase):
         self.assertEqual(cfg.domain_rand.delay_ms_range, [0, 0])
         self.assertEqual(cfg.terrain.riser_height_range, [0.025, 0.08])
         self.assertEqual(cfg.terrain.num_steps, 1)
-        self.assertEqual(untouched.terrain.num_steps, 1)
+        self.assertEqual(untouched.terrain.num_steps, 3)
         self.assertEqual(untouched.domain_rand.friction_range, original.domain_rand.friction_range)
         self.assertEqual(namespace["class_to_dict"](original), before)
         with self.assertRaisesRegex(ValueError, "Unknown CTBC stage"):
@@ -150,7 +150,7 @@ class CTBCTerrainTests(unittest.TestCase):
         cfg, train = Config(), PPOConfig()
         self.assertEqual((cfg.env.num_envs, cfg.env.num_observations,
                           cfg.env.num_privileged_obs, train.policy.num_encoder_obs),
-                         (4096, 31, 151, 155))
+                         (1024, 31, 151, 155))
         self.assertEqual(cfg.control.leg_action_scales, [0.5, 0.9, 0.5, 0.9])
         self.assertEqual(cfg.commands.ranges.lin_vel_x, [0.15, 0.3])
         self.assertEqual(cfg.commands.ranges.ang_vel_yaw, [0.0, 0.0])

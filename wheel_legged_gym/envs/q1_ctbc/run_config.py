@@ -148,7 +148,7 @@ def prepare_ctbc_training(env_cfg, train_cfg, args, root_dir, get_load_path,
         train_cfg.runner.checkpoint = args.checkpoint
         train_cfg.runner.resume = True
     else:
-        stage = requested_stage or "single"
+        stage = requested_stage or env_cfg.ctbc.stage
         configure_stage(env_cfg, stage)
         if stage == "stairs20":
             env_cfg.ctbc.feedforward_start_iteration = 0

@@ -10,14 +10,16 @@
 
 ```bash
 pip install -e .
-python wheel_legged_gym/scripts/train.py --task=q1_ctbc --ctbc_stage=single --headless
+python wheel_legged_gym/scripts/train.py --task=q1_ctbc --headless
 ```
 
-默认 `single`：20% 平地、80% 单阶，单级高度 0.025–0.08 m，踏面 0.5 m，正向速度 0.15–0.3 m/s，不采样转向/后退。出生在第一个台阶前的低处，课程升降依据实际到达目标平台的结果，避免在出生平台上运动就升级。
+默认对齐桌面 `log/resolved_config.json` 保存的训练：`stairs` 阶段、1024 个环境、30000 轮、种子 1，从头训练。20% 平地、80% 连续三阶，单级高度 0.04–0.12 m，踏面随课程从 0.5 m 减至 0.35 m，正向速度 0.15–0.3 m/s，不采样转向/后退，关闭域随机化与观测噪声。出生在第一个台阶前的低处，课程升降依据实际到达目标平台的结果。完整比较见 [训练对齐记录](../../../docs/q1_ctbc_training_alignment.md)。
+
+如需单阶课程，显式传入 `--ctbc_stage=single`：20% 平地、80% 单阶，单级高度 0.025–0.08 m、踏面 0.5 m。`q1_ctbc_highcom` 保留原有的 `single` 默认阶段和 4096 环境。
 
 每个楼梯环境累计 5 个有效回合后判定课程：成功率 ≥80% 升一级，<30% 降一级，其余保持；判定后清零该组计数。平地回合不用于楼梯升级。
 
-先用固定 5 cm 单阶评估指导开启与纯策略表现；具备稳定落台能力后再续训连续楼梯：
+选择单阶课程时，可先用固定 5 cm 单阶评估指导开启与纯策略表现，再续训连续楼梯。默认三阶运行也可从检查点继续训练或切换到随机化阶段：
 
 ```bash
 # RUN_NAME 为 logs/q1_ctbc 下原有运行目录，CHECKPOINT 为实际模型编号。

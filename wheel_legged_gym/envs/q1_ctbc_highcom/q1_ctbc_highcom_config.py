@@ -55,6 +55,10 @@ def configure_highcom_stage(cfg, stage):
 
 
 class Q1CTBCHighCOMCfg(Q1CTBCCfg):
+    class env(Q1CTBCCfg.env):
+        # Keep this separate posture experiment's existing training batch.
+        num_envs = 4096
+
     def __init__(self):
         super().__init__()
         configure_highcom_stage(self, "single")
@@ -63,4 +67,5 @@ class Q1CTBCHighCOMCfg(Q1CTBCCfg):
 class Q1CTBCHighCOMCfgPPO(Q1CTBCCfgPPO):
     class runner(Q1CTBCCfgPPO.runner):
         experiment_name = "q1_ctbc_highcom"
+        run_name = "single"
         swanlab_tags = ["q1", "ctbc", "highcom-knee45"]

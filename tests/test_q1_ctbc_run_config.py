@@ -152,10 +152,15 @@ class CTBCRunConfigTests(unittest.TestCase):
                          (1024, 17, 8000, "tensorboard"))
         resolver.assert_called_once_with(str(run / "logs" / "custom_experiment"), load_run="oldrun", checkpoint=12345)
 
-    def test_fresh_training_defaults_to_single_and_uses_requested_name(self):
-        for requested, expected in ((None, "single"), ("stairs", "stairs"), ("stairs20", "stairs20")):
-            with self.subTest(requested=requested):
+    def test_fresh_training_uses_task_default_or_explicit_stage(self):
+        for default, requested, expected in (("single", None, "single"),
+                                             ("stairs", None, "stairs"),
+                                             ("stairs", "single", "single"),
+                                             ("single", "stairs", "stairs"),
+                                             ("stairs", "stairs20", "stairs20")):
+            with self.subTest(default=default, requested=requested):
                 env, train = configs()
+                env.ctbc.stage = default
                 args = arguments(resume=False, ctbc_stage=requested)
                 resolver = Mock()
                 with patch.object(CONFIG, "_configure_stage", side_effect=configure_stage) as stage:

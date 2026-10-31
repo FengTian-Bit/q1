@@ -56,6 +56,10 @@ def configure_q1_t0(cfg):
 
 
 class Q1T0Cfg(Q1CTBCCfg):
+    class env(Q1CTBCCfg.env):
+        # T0 keeps its existing batch when CTBC defaults follow the saved run.
+        num_envs = 4096
+
     def __init__(self):
         super().__init__()
         configure_q1_t0(self)

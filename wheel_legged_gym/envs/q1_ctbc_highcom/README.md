@@ -1,6 +1,6 @@
 # Q1 CTBC 高站姿对照任务
 
-`q1_ctbc_highcom` 继承 `q1_ctbc` 的定向爬阶、接触指导、奖励、PPO 和四个训练阶段，仅修改名义站姿及其运动学依赖。原任务不变，日志独立存入 `logs/q1_ctbc_highcom/`。默认仍为 `single` 阶段。
+`q1_ctbc_highcom` 继承 `q1_ctbc` 的定向爬阶、接触指导、奖励、PPO 和四个训练阶段，修改名义站姿及其运动学依赖。日志独立存入 `logs/q1_ctbc_highcom/`。本任务保留 `single` 阶段、4096 环境的默认设置；`q1_ctbc` 已对齐保存的基线运行，默认 `stairs`、1024 环境。
 
 ## 选择的姿态
 

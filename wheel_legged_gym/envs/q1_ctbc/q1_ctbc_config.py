@@ -4,6 +4,10 @@ from wheel_legged_gym.envs.q1.q1_config import Q1Cfg, Q1CfgPPO
 
 
 class Q1CTBCCfg(Q1Cfg):
+    class env(Q1Cfg.env):
+        # Pin the successful stairs run independently of Q1's larger batch.
+        num_envs = 1024
+
     class terrain(Q1Cfg.terrain):
         mesh_type = "trimesh"
         curriculum = True
@@ -18,9 +22,9 @@ class Q1CTBCCfg(Q1Cfg):
         terrain_names = ["flat", "stairs_up"]
         terrain_labels = [-1, 3]
         terrain_proportions = [0.2, 0.8]
-        riser_height_range = [0.025, 0.08]
-        tread_width_range = [0.5, 0.5]
-        num_steps = 1
+        riser_height_range = [0.04, 0.12]
+        tread_width_range = [0.5, 0.35]
+        num_steps = 3
         spawn_x = 1.0
         first_step_x = 1.7
         goal_margin = 0.3
@@ -52,7 +56,7 @@ class Q1CTBCCfg(Q1Cfg):
         leg_action_limits = None
 
     class ctbc:
-        stage = "single"
+        stage = "stairs"
         contact_threshold = 12.0
         contact_frames = 3
         swing_duration = 0.6
@@ -97,7 +101,7 @@ class Q1CTBCCfg(Q1Cfg):
 class Q1CTBCCfgPPO(Q1CfgPPO):
     class runner(Q1CfgPPO.runner):
         experiment_name = "q1_ctbc"
-        run_name = "single"
+        run_name = "stairs"
         swanlab_tags = ["q1", "ctbc"]
 
         class periodic_video(Q1CfgPPO.runner.periodic_video):
