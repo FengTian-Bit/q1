@@ -47,8 +47,10 @@ python wheel_legged_gym/scripts/evaluate_q1_ctbc.py --load_run=RUN_NAME --checkp
 阶段续训、参数、评估单位与验证范围见 [CTBC 任务说明](wheel_legged_gym/envs/q1_ctbc/README.md)。
 
 已有低台阶策略可用 `--ctbc_stage=stairs20 --resume --load_run=RUN_NAME --checkpoint=-1`
-继续训练 10–20 cm 连续楼梯。该阶段按课程把引导从 8 cm 增至 16 cm，扩大腿目标范围，
-保留原动作归一化尺度，并在跨入阶段时重新计时指导渐入与退火。新阶段的 20 cm 实际能力仍需评估。
+启用 12 级、4–22 cm 连续三阶课程，踏面固定 0.5 m。配套引导从 8 cm 增至 17.6 cm、
+摆动时间 0.85 s，扩大腿目标范围，保留原动作归一化尺度和 14 N·m 腿力矩上限。
+每 10 回合判定升降级，新增分高度成功率、卡阶和逐关节裁剪诊断。
+首次迁入新配置会重新计时指导渐入与退火，同配置续训保留时钟。22 cm 实际能力仍需评估。
 
 ---
 

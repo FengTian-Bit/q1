@@ -31,7 +31,7 @@ def nominal_lift_offsets(lift):
 
 def configure_highcom_stage(cfg, stage):
     """Apply the matching CTBC curriculum and then its posture dependencies."""
-    configure_ctbc_stage(cfg, stage)
+    configure_ctbc_stage(cfg, stage, high_stairs_profile="legacy20")
     cfg.init_state.default_joint_angles = {
         side+"_"+joint+"_joint": angle for side in ("L", "R")
         for joint, angle in (("thigh", HIGHCOM_THIGH), ("calf", HIGHCOM_CALF), ("foot", 0.0))}

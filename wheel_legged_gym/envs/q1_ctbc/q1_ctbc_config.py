@@ -82,6 +82,13 @@ class Q1CTBCCfg(Q1Cfg):
         curriculum_window = 5
         curriculum_promote_rate = 0.8
         curriculum_demote_rate = 0.3
+        guidance_profile = "legacy"
+        diagnostics_enabled = False
+        # Diagnostic only: confirm this detector in contact simulation before
+        # using it to terminate episodes or change rewards.
+        stall_timeout_s = 3.0
+        stall_progress_distance = 0.03
+        stall_support_rise = 0.02
 
     class rewards(Q1Cfg.rewards):
         tracking_sigma = 0.04
@@ -108,10 +115,12 @@ class Q1CTBCCfgPPO(Q1CfgPPO):
             enabled = False
 
 
-def configure_ctbc_stage(cfg, stage):
+def configure_ctbc_stage(cfg, stage, *, high_stairs_profile="dense22"):
     """Apply a complete stage, so switching back also removes robust settings."""
     if stage not in ("single", "stairs", "robust", "stairs20"):
         raise ValueError("Unknown CTBC stage: {}".format(stage))
+    if high_stairs_profile not in ("dense22", "legacy20"):
+        raise ValueError("Unknown high-stair profile: {}".format(high_stairs_profile))
     cfg.ctbc.stage = stage
     cfg.commands.ranges.lin_vel_x = [0.15, 0.3]
     cfg.commands.ranges.ang_vel_yaw = [0.0, 0.0]
@@ -122,13 +131,18 @@ def configure_ctbc_stage(cfg, stage):
     cfg.terrain.tread_width_range = [0.5, 0.5] if stage == "single" else [0.5, 0.35]
     cfg.terrain.num_steps = 1 if stage == "single" else 3
     high = stage == "stairs20"
+    dense = high and high_stairs_profile == "dense22"
+    cfg.terrain.num_rows = 12 if dense else 6
+    cfg.ctbc.curriculum_window = 10 if dense else 5
+    cfg.ctbc.guidance_profile = "dense22_v1" if dense else "legacy"
+    cfg.ctbc.diagnostics_enabled = dense
     cfg.control.leg_action_limits = [0.7, 1.35, 0.7, 1.35] if high else None
     cfg.normalization.clip_actions = max(
         [1.0] + [limit/scale for limit, scale in zip(
             cfg.control.leg_action_limits or cfg.control.leg_action_scales,
             cfg.control.leg_action_scales)])
-    cfg.ctbc.guide_lift_height_range = [0.08, 0.16] if high else None
-    cfg.ctbc.swing_duration = 0.8 if high else 0.6
+    cfg.ctbc.guide_lift_height_range = [0.08, 0.176 if dense else 0.16] if high else None
+    cfg.ctbc.swing_duration = 0.85 if dense else 0.8 if high else 0.6
     cfg.ctbc.min_swing_time = 0.4 if high else 0.3
     cfg.ctbc.min_landing_rise = 0.02 if high else 0.0
     cfg.ctbc.clearance_overshoot_allowance = 0.06 if high else 0.0
@@ -136,11 +150,10 @@ def configure_ctbc_stage(cfg, stage):
     cfg.ctbc.feedforward_ramp_iterations = min(1000, cfg.ctbc.feedforward_hold_iterations) if high else 0
     cfg.rewards.scales.ctbc_target = 0.3 if high else 1.0
     if high:
-        # The lower row reproduces the validated 8 cm guide / 10 cm stair pair.
-        # Only the training teacher uses terrain height; actor inputs stay blind.
-        cfg.terrain.riser_height_range = [0.10, 0.20]
-        cfg.terrain.tread_width_range = [0.50, 0.40]
-        cfg.terrain.num_rows = 6
+        # Keep 8 cm teaching on low stairs, then use 0.8 times the realized
+        # stair height. Only the teacher sees terrain; actor inputs stay blind.
+        cfg.terrain.riser_height_range = [0.04, 0.22] if dense else [0.10, 0.20]
+        cfg.terrain.tread_width_range = [0.50, 0.50] if dense else [0.50, 0.40]
         cfg.terrain.max_init_terrain_level = 0
         cfg.commands.max_forward_speed = 0.20
         cfg.commands.minimum_motion_speed = 0.15

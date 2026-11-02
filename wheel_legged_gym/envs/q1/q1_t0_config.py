@@ -33,7 +33,7 @@ T0_TERRAIN = {
 
 def configure_q1_t0(cfg):
     """Set the new task preset, including when migrating a CTBC checkpoint."""
-    configure_ctbc_stage(cfg, "stairs20")
+    configure_ctbc_stage(cfg, "stairs20", high_stairs_profile="legacy20")
     for name, value in T0_TERRAIN.items():
         setattr(cfg.terrain, name, deepcopy(value))
     cfg.ctbc.stage = "t0"

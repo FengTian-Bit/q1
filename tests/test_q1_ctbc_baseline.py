@@ -40,6 +40,14 @@ class CTBCSavedBaselineTests(unittest.TestCase):
         # Production serialization includes this empty method artifact.
         for section in ("env", "train"):
             expected[section].pop("init_member_classes")
+        # Additive diagnostics stay off in the saved stairs baseline. The
+        # historical fixture remains untouched; all control parameters match.
+        metadata = {key: actual["env"]["ctbc"].pop(key) for key in (
+            "guidance_profile", "diagnostics_enabled", "stall_timeout_s",
+            "stall_progress_distance", "stall_support_rise")}
+        self.assertEqual(metadata, dict(guidance_profile="legacy", diagnostics_enabled=False,
+                                       stall_timeout_s=3.0, stall_progress_distance=.03,
+                                       stall_support_rise=.02))
         self.assertEqual(actual, expected)
         self.assertEqual(env.env.num_envs * train.runner.num_steps_per_env, 49152)
 

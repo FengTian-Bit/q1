@@ -263,6 +263,7 @@ class OnPolicyRunner:
         )
         self.writer.add_scalar("Loss/learning_rate", self.alg.learning_rate, locs["it"])
         self.writer.add_scalar("Policy/mean_noise_std", mean_std.item(), locs["it"])
+        self._log_joint_noise(locs["it"])
         self.writer.add_scalar("Policy/mean_kl", locs["mean_kl"], locs["it"])
         self.writer.add_scalar("Perf/total_fps", fps, locs["it"])
         self.writer.add_scalar(
@@ -318,6 +319,13 @@ class OnPolicyRunner:
                                locs['tot_iter'] - locs['it'] - 1):.1f}s\n"""
         )
         print(log_string)
+
+    def _log_joint_noise(self, iteration):
+        ctbc = getattr(getattr(self.env, "cfg", None), "ctbc", None)
+        if getattr(ctbc, "diagnostics_enabled", False):
+            for name, std in zip(self.env.cfg.asset.policy_joint_names,
+                                 self.alg.actor_critic.std.detach().cpu().tolist()):
+                self.writer.add_scalar("Policy/noise_std_"+name, std, iteration)
 
     def save(self, path, infos=None):
         torch.save(

@@ -115,8 +115,13 @@ def prepare_ctbc_training(env_cfg, train_cfg, args, root_dir, get_load_path,
         except (OSError, json.JSONDecodeError) as exc:
             raise ValueError("Cannot read {} configuration: ".format(task_name) + str(config_path)) from exc
         saved_stage = validate_ctbc_snapshot(snapshot, task_name=task_name)
+        saved_profile = snapshot["env"]["ctbc"].get("guidance_profile", "legacy")
         apply_config(env_cfg, snapshot["env"])
         apply_config(train_cfg, snapshot["train"])
+        # Missing fields in old snapshots must not inherit a future default
+        # teacher or diagnostic profile when restoring the saved run as-is.
+        env_cfg.ctbc.guidance_profile = saved_profile
+        env_cfg.ctbc.diagnostics_enabled = snapshot["env"]["ctbc"].get("diagnostics_enabled", False)
         if "feedforward_start_iteration" not in snapshot["env"]["ctbc"]:
             # Legacy snapshots predate a stage-relative guidance clock.
             env_cfg.ctbc.feedforward_start_iteration = 0
@@ -127,9 +132,12 @@ def prepare_ctbc_training(env_cfg, train_cfg, args, root_dir, get_load_path,
         if requested_stage is not None:
             configure_stage(env_cfg, stage)
         if stage == "stairs20":
-            if saved_stage != "stairs20":
+            profile_changed = (requested_stage is not None and
+                               getattr(env_cfg.ctbc, "guidance_profile", "legacy") != saved_profile)
+            if saved_stage != "stairs20" or profile_changed:
                 # Start a fresh guidance schedule at the loaded policy's real
-                # cumulative update, without changing its model/action contract.
+                # cumulative update, including migration from the old 20 cm
+                # preset to dense22. Repeated dense22 resumes keep this origin.
                 entry_iteration = _load_checkpoint_iteration(checkpoint)
                 env_cfg.ctbc.feedforward_start_iteration = entry_iteration
                 train_cfg.runner.ctbc_guidance_entry_checkpoint_iteration = entry_iteration

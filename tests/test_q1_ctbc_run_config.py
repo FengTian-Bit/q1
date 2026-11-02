@@ -236,6 +236,39 @@ class CTBCRunConfigTests(unittest.TestCase):
         self.assertEqual(env.ctbc.feedforward_start_iteration, 0)
         self.assertEqual(train.runner.ctbc_guidance_start_iteration, 0)
 
+    def test_explicit_old_high_stage_migration_restarts_new_profile_once(self):
+        from test_q1_ctbc import NAMESPACE
+        configure = NAMESPACE["configure_ctbc_stage"]
+        for saved_profile, explicit, restart in ((None, False, False),
+                                                  (None, True, True),
+                                                  ("dense22_v1", True, False)):
+            with self.subTest(profile=saved_profile, explicit=explicit):
+                env, train = NAMESPACE["Q1CTBCCfg"](), NAMESPACE["Q1CTBCCfgPPO"]()
+                data = snapshot("stairs20")
+                data["env"]["ctbc"]["feedforward_start_iteration"] = 1500
+                data["env"]["ctbc"]["guide_lift_height_range"] = [.08,.16]
+                data["env"]["terrain"]["num_rows"] = 6
+                data["env"]["terrain"]["riser_height_range"] = [.10,.20]
+                if saved_profile:
+                    data["env"]["ctbc"]["guidance_profile"] = saved_profile
+                run, checkpoint = self.fixture(data, "model_9000.pt")
+                args = arguments(ctbc_stage="stairs20" if explicit else None)
+                with patch.object(CONFIG, "_load_checkpoint_iteration", return_value=9000) as read:
+                    CONFIG.prepare_ctbc_training(env, train, args, run, Mock(return_value=str(checkpoint)),
+                                                 stage_configurator=configure)
+                self.assertEqual(read.call_count, int(restart))
+                self.assertEqual(env.ctbc.feedforward_start_iteration, 9000 if restart else 1500)
+                if explicit:
+                    self.assertEqual((env.terrain.num_rows, env.ctbc.curriculum_window), (12,10))
+                    self.assertEqual(env.terrain.riser_height_range, [.04,.22])
+                    self.assertEqual(env.ctbc.guide_lift_height_range, [.08,.176])
+                    self.assertTrue(env.ctbc.diagnostics_enabled)
+                else:
+                    self.assertEqual(env.terrain.num_rows, 6)
+                    self.assertEqual(env.terrain.riser_height_range, [.10,.20])
+                    self.assertEqual(env.ctbc.guide_lift_height_range, [.08,.16])
+                    self.assertFalse(env.ctbc.diagnostics_enabled)
+
     def test_iteration_reader_uses_safe_cpu_loading_and_rejects_invalid_metadata(self):
         reader = Mock(return_value={"iter": 30000})
         with patch.dict(sys.modules, {"torch": SimpleNamespace(load=reader)}):

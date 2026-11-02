@@ -4,6 +4,7 @@ The policy retains Q1's 31/155 observation interface. The force-driven teacher
 never enters actor observations; guidance can be removed completely at evaluation.
 """
 
+import math
 import torch
 from isaacgym.torch_utils import quat_apply
 
@@ -76,7 +77,8 @@ class Q1CTBC(Q1):
         else:
             if len(bounds) != 2 or not 0 < bounds[0] <= bounds[1]:
                 raise ValueError("CTBC guide lift range must contain positive ordered heights")
-            # The user's validated 8 cm guide / 10 cm riser pair is row zero.
+            # Retain the validated 8 cm / 10 cm guide ratio, with a minimum
+            # teaching height for the lower rows of the dense curriculum.
             ratio = float(getattr(cfg, "guide_lift_ratio", 0.8))
             if not 0 < ratio <= 1:
                 raise ValueError("CTBC guide lift ratio must be in (0, 1]")
@@ -137,6 +139,21 @@ class Q1CTBC(Q1):
         else:
             self._update_guide_amplitudes()
 
+        self.ctbc_diagnostics_enabled = bool(getattr(self.cfg.ctbc, "diagnostics_enabled", False))
+        if self.ctbc_diagnostics_enabled:
+            for name in ("stall_timeout_s", "stall_progress_distance", "stall_support_rise"):
+                value = float(getattr(self.cfg.ctbc, name))
+                if not math.isfinite(value) or value <= 0:
+                    raise ValueError("ctbc.{} must be finite and positive".format(name))
+            self.ctbc_policy_clip_sum = torch.zeros_like(self.actions)
+            self.ctbc_composite_clip_sum = torch.zeros_like(self.actions)
+            self.ctbc_contact_seen = torch.zeros_like(self.ctbc_success)
+            self.ctbc_stalled = torch.zeros_like(self.ctbc_success)
+            self.ctbc_stall_seen = torch.zeros_like(self.ctbc_success)
+            self.ctbc_stall_elapsed = torch.zeros_like(self.ctbc_best_x)
+            self.ctbc_progress_x = self.root_states[:, 0].clone()
+            self.ctbc_support_z = self.env_origins[:, 2].clone()
+
     def set_training_iteration(self, iteration):
         """Called with cumulative PPO updates, including after checkpoint load."""
         self.ctbc_training_iteration = max(int(iteration), 0)
@@ -182,7 +199,10 @@ class Q1CTBC(Q1):
     def step(self, actions):
         # Never mutate the PPO sample: its log probability belongs to raw policy
         # actions. Q1.step stores the normalized composite as action history.
-        raw = torch.maximum(torch.minimum(actions.to(self.device), self.ctbc_action_clip),
+        policy_actions = actions.to(self.device)
+        if self.ctbc_diagnostics_enabled:
+            self.ctbc_policy_clip_sum += (policy_actions.abs() > self.ctbc_action_clip).float()
+        raw = torch.maximum(torch.minimum(policy_actions, self.ctbc_action_clip),
                             -self.ctbc_action_clip)
         self.ctbc_raw_actions[:] = raw
         if self._guidance_mode != "off" and not self.cfg.ctbc.pure_policy:
@@ -195,6 +215,8 @@ class Q1CTBC(Q1):
         composite = raw.clone()
         composite[:, [0, 1, 3, 4]] += (self.ctbc_feedforward_weight*self.ctbc_reference
                                        / self.ctbc_leg_scales)
+        if self.ctbc_diagnostics_enabled:
+            self.ctbc_composite_clip_sum += (composite.abs() > self.ctbc_action_clip).float()
         composite = torch.maximum(torch.minimum(composite, self.ctbc_action_clip),
                                   -self.ctbc_action_clip)
         return super().step(composite)
@@ -255,6 +277,39 @@ class Q1CTBC(Q1):
         self.ctbc_goal_dwell[:] = torch.where(reached, self.ctbc_goal_dwell+self.dt,
                                                torch.zeros_like(self.ctbc_goal_dwell))
         self.ctbc_success[:] = self.ctbc_goal_dwell >= self.cfg.ctbc.goal_dwell_s-1e-6
+        if self.ctbc_diagnostics_enabled:
+            self._update_stall_diagnostics(bottom, support)
+
+    def _update_stall_diagnostics(self, bottom, support):
+        """Observe post-contact stagnation without changing termination/rewards.
+
+        Progress uses forward root displacement or a NEW supported wheel
+        height. An airborne lift, wheel oscillation or repeated contact at the
+        same height cannot keep resetting the timer. Flat/stationary episodes
+        are excluded; genuine forward motion or a new support platform clears
+        the current flag while preserving the episode's ever-stalled marker.
+        """
+        cfg = self.cfg.ctbc
+        moving = self.commands[:, 0] > self.cfg.commands.idle_threshold
+        stairs = self.ctbc_step_counts > 0
+        collision = (self.contact_forces[:, self.feet_indices, :2].norm(dim=-1)
+                     > cfg.contact_threshold).any(dim=1)
+        begin = ~self.ctbc_contact_seen & collision & moving & stairs
+        supported_z = bottom.masked_fill(~support, -torch.inf).amax(dim=1)
+        supported_z = torch.where(support.any(dim=1), supported_z, self.ctbc_support_z)
+        self.ctbc_progress_x[begin] = self.root_states[begin, 0]
+        self.ctbc_support_z[begin] = supported_z[begin]
+        self.ctbc_contact_seen |= begin
+        forward = self.root_states[:, 0] >= self.ctbc_progress_x + cfg.stall_progress_distance
+        raised = supported_z >= self.ctbc_support_z + cfg.stall_support_rise
+        self.ctbc_progress_x[forward] = self.root_states[forward, 0]
+        self.ctbc_support_z[raised] = supported_z[raised]
+        active = self.ctbc_contact_seen & moving & stairs & ~self.ctbc_success
+        self.ctbc_stall_elapsed[:] = torch.where(
+            active & ~begin & ~forward & ~raised,
+            self.ctbc_stall_elapsed + self.dt, torch.zeros_like(self.ctbc_stall_elapsed))
+        self.ctbc_stalled[:] = active & (self.ctbc_stall_elapsed >= cfg.stall_timeout_s-1e-5)
+        self.ctbc_stall_seen |= self.ctbc_stalled
 
     def check_termination(self):
         super().check_termination()
@@ -313,6 +368,13 @@ class Q1CTBC(Q1):
         }
         triggers = self.ctbc_trigger_count[valid].clone()
         swing_timeouts = self.ctbc_swing_timeouts[valid].clone()
+        if self.ctbc_diagnostics_enabled:
+            event["terrain_level"] = (self.terrain_levels[valid].clone() if self.custom_origins
+                                      else torch.zeros_like(valid))
+            event["stall_observed"] = self.ctbc_stall_seen[valid].clone()
+            duration = self.metric_steps[valid, None].clamp_min(1)
+            policy_clip = (self.ctbc_policy_clip_sum[valid]/duration).clone()
+            composite_clip = (self.ctbc_composite_clip_sum[valid]/duration).clone()
         # Keep success until the parent has advanced the curriculum. Clear only
         # actuator history before its reset observation/history is constructed.
         self.ctbc_executed_actions[env_ids] = 0.0
@@ -324,6 +386,13 @@ class Q1CTBC(Q1):
                       self.ctbc_swing_timeouts):
             field[env_ids] = 0
         self.ctbc_best_x[env_ids] = self.root_states[env_ids, 0]
+        if self.ctbc_diagnostics_enabled:
+            for field in (self.ctbc_policy_clip_sum, self.ctbc_composite_clip_sum,
+                          self.ctbc_contact_seen, self.ctbc_stalled, self.ctbc_stall_seen,
+                          self.ctbc_stall_elapsed):
+                field[env_ids] = 0
+            self.ctbc_progress_x[env_ids] = self.root_states[env_ids, 0]
+            self.ctbc_support_z[env_ids] = self.env_origins[env_ids, 2]
         if len(valid):
             self.extras["ctbc_episode"] = event
             episode = self.extras["episode"]
@@ -335,6 +404,22 @@ class Q1CTBC(Q1):
             episode["ctbc_swing_timeouts"] = swing_timeouts.mean()
             episode["ctbc_feedforward_weight"] = self.ctbc_feedforward_weight
             episode["ctbc_guide_lift_m"] = event["guide_lift_m"].mean()
+            if self.ctbc_diagnostics_enabled:
+                # Keep one value per completed episode: the runner concatenates
+                # these arrays, giving episode-weighted rates per update rather
+                # than an unweighted mean of differently-sized reset batches.
+                if stairs.any():
+                    episode["ctbc_stair_level"] = event["terrain_level"][stairs].float()
+                    episode["ctbc_stall_rate"] = event["stall_observed"][stairs].float()
+                    heights_mm = (event["height_m"]*1000).round().long()
+                    for height in heights_mm[stairs].unique().tolist():
+                        mask = stairs & (heights_mm == height)
+                        suffix = "h{:03d}mm".format(height)
+                        episode["ctbc_stair_success_"+suffix] = event["success"][mask].float()
+                        episode["ctbc_stall_"+suffix] = event["stall_observed"][mask].float()
+                for index, name in enumerate(self.cfg.asset.policy_joint_names):
+                    episode["ctbc_policy_clip_"+name] = policy_clip[:, index]
+                    episode["ctbc_composite_clip_"+name] = composite_clip[:, index]
 
     def _reward_leg_symmetry(self):
         """Release symmetry immediately when either wheel hits an obstacle."""

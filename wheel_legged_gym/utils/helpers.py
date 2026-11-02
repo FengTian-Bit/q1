@@ -188,7 +188,7 @@ def get_args(extra_custom_parameters=None, default_task="anymal_c_flat"):
         {
             "name": "--ctbc_stage", "type": str,
             "choices": ["single", "stairs", "robust", "stairs20"], "default": None,
-            "help": "q1_ctbc / q1_ctbc_highcom curriculum: single, stairs, randomized robust, or 10-20 cm stairs20.",
+            "help": "CTBC curriculum: single, stairs, robust, or stairs20 (q1_ctbc: 12 levels, 4-22 cm; highcom: 10-20 cm).",
         },
         {
             "name": "--q1_stage",
