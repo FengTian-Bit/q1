@@ -30,6 +30,46 @@ Actor 输入为当前观测＋z＋7 个固定显式槽位。关闭的槽位置�
 
 在仓库根目录执行，使用已安装 Isaac Gym、PyTorch 的训练环境。下面的命令在 PowerShell 和 Bash 中均可逐行运行。
 
+### 一条命令跑完所有消融
+
+```bash
+python wheel_legged_gym/envs/q1_tcn/batch.py
+```
+
+默认顺序为 seed1 的 A0→A1→A2→A3→A4，再运行 seed2、seed3，共 15 次训练。每次训练为 1024 个环境、3000 轮，使用 `cuda:0`，训练完成后自动评估；全部完成后生成总对比表和图。各进程串行执行，上一项正常退出后才启动下一项。
+
+默认输出为 `logs/q1_tcn/A0_seed1` 等目录，与下方单次训练命令一致。因此，手动训练的 `A1_seed1` 完成后可以直接运行批量入口，脚本会验证并复用它。**如果单次 A1 仍在运行，请等它退出后再启动批量入口，避免两个训练进程同时使用 GPU。**
+
+只跑 seed1 的五组消融：
+
+```bash
+python wheel_legged_gym/envs/q1_tcn/batch.py --seeds 1
+```
+
+只训练、暂不评估：
+
+```bash
+python wheel_legged_gym/envs/q1_tcn/batch.py --train_only
+```
+
+先预览完整命令清单（不启动训练，不写入文件）：
+
+```bash
+python wheel_legged_gym/envs/q1_tcn/batch.py --dry_run
+```
+
+自定义预算和设备示例：
+
+```bash
+python wheel_legged_gym/envs/q1_tcn/batch.py --seeds 1 2 3 --num_envs 1024 --max_iterations 3000 --sim_device cuda:0 --rl_device cuda:0 --output_root logs/q1_tcn
+```
+
+批量入口中的 `max_iterations` 表示每组**总目标轮数**。重跑同一命令时，已达到目标的检查点跳过训练；未完成的模型从最近可读检查点恢复，仅补足剩余轮数。例如已有 model_500.pt 时，追加 2500 轮到 model_3000.pt。恢复产出存入该实验目录下的 `resume_500_to_3000/`，保留旧文件；训练失败且尚无检查点时，会使用新的 restart 子目录重新开始。
+
+已完成且协议匹配、结果文件齐全的评估会跳过。中途失败立即停止队列，状态保存在 `logs/q1_tcn/ablation_batch.json`；解决问题后重跑同一命令即可继续。脚本不覆盖已有非空的训练或评估目录。环境数量、种子、组别或预算不兼容时会报错，不能把短测试目录直接作为正式实验继续使用。
+
+默认结果位置：各实验目录下的 `evaluation/`（恢复后位于对应恢复目录下），以及 `logs/q1_tcn/comparison/comparison.csv`、`comparison.json`、`comparison.png`。先用 `--train_only` 跑完后，再去掉该选项重跑，就会补评估和总对比。
+
 先运行一次短训练，检查设备、接触标签和输出文件：
 
 ```bash
