@@ -56,6 +56,49 @@ def attach_terrain(env):
 
 
 class Q1T0IntegrationTests(unittest.TestCase):
+    def test_current_maximum_geometry_and_command_bounds(self):
+        cfg = NAMES["Q1T0Cfg"]()
+        cfg.terrain.mesh_type = "heightfield"
+        cfg.terrain.num_rows, cfg.terrain.border_size = 2, 0.0
+        terrain, tools = build_terrain(cfg.terrain)
+        torch.testing.assert_close(torch.tensor(terrain.riser_heights[-1, 12:]),
+                                   torch.full((8,), .22, dtype=torch.float64))
+        torch.testing.assert_close(torch.tensor(terrain.tread_widths[-1, 12:]),
+                                   torch.full((8,), .30, dtype=torch.float64))
+        slopes = [args["slope"] for kind, _, args in tools.calls if kind == "slope"]
+        self.assertAlmostEqual(max(slopes), .48)
+        self.assertIn(.32, slopes)
+        self.assertIn(-.32, slopes)
+        self.assertEqual(cfg.commands.ranges.lin_vel_x, [-1.2, 1.2])
+        self.assertEqual(cfg.commands.max_forward_speed, 1.2)
+
+    def test_current_training_distribution_and_stair_columns(self):
+        cfg = NAMES["Q1T0Cfg"]().terrain
+        cfg.mesh_type, cfg.num_rows, cfg.border_size = "heightfield", 1, 0.0
+        self.assertEqual(cfg.terrain_proportions, [.2, .15, .15, .05, .05, .2, .2])
+        terrain, _ = build_terrain(cfg)
+        self.assertEqual(terrain.terrain_classes[0].tolist(),
+                         [-1]*4 + [0]*6 + [1]*2 + [2]*4 + [3]*4)
+        self.assertTrue((terrain.step_counts[:, :12] == 0).all())
+        self.assertTrue((terrain.step_counts[:, 12:] > 0).all())
+
+    def test_teacher_only_runs_on_stairs_and_clears_nonstair_swing(self):
+        env = t0_env(4)
+        env.ctbc_step_counts[:] = torch.tensor([0, 0, 3, 3])
+        env.set_guidance_mode("on")
+        env.commands[:, 0] = env.command_targets[:, 0] = -.3
+        env.contact_forces[:, env.feet_indices[0], 0] = 20
+        env.guidance.active_leg[:2] = 0
+        env.guidance.elapsed[:2] = .3
+        for _ in range(8):
+            env.step(torch.zeros(4, 6))
+        self.assertEqual(env.guidance.active_leg.tolist(), [-1, -1, 0, 0])
+        self.assertFalse(env.ctbc_reference[:2].any())
+        self.assertTrue(env.ctbc_reference[2:].abs().sum() > 0)
+        for reward in (env._reward_ctbc_target, env._reward_ctbc_clearance,
+                       env._reward_ctbc_contact):
+            self.assertFalse(reward()[:2].any())
+
     def test_ctbc_inheritance_dimensions_and_blind_actor_contract(self):
         env = t0_env()
         self.assertIsInstance(env, NAMES["Q1CTBC"])
@@ -92,6 +135,7 @@ class Q1T0IntegrationTests(unittest.TestCase):
 
     def test_reverse_and_turning_collisions_trigger_but_stationary_contact_does_not(self):
         env = t0_env(3)
+        env.ctbc_step_counts[:] = 3
         env.set_guidance_mode("on")
         env.commands[:, :2] = torch.tensor([[-0.3, 0.0], [0.0, -0.4], [0.0, 0.0]])
         env.command_targets[:] = env.commands
@@ -167,7 +211,7 @@ class Q1T0IntegrationTests(unittest.TestCase):
         self.assertEqual(env.terrain_levels.tolist(), [2, 1])
         self.assertEqual(env.success_ids.tolist(), [0])
         self.assertEqual(env.env_class.tolist(), [2, 3])
-        self.assertAlmostEqual(env.ctbc_riser_heights[0].item(), 0.24)
+        self.assertAlmostEqual(env.ctbc_riser_heights[0].item(), 0.22)
         self.assertAlmostEqual(env.ctbc_guide_lift_heights[0].item(), 0.16)
         self.assertGreater(env.guidance.amplitudes[0, 0], old_amplitudes[0, 0])
         torch.testing.assert_close(env.guidance.amplitudes[1], old_amplitudes[1])

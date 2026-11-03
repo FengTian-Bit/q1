@@ -118,7 +118,7 @@ python wheel_legged_gym/scripts/train.py --task=q1_ctbc_highcom --ctbc_stage=sta
 
 ### 3. q1：T0 混合地形
 
-默认 4096 环境、30000 次更新，使用 T0 混合地形、距离升降级及速度指令。不接受 `--q1_stage` 或 `--ctbc_stage`。
+默认 4096 环境、30000 次更新，支持前进、后退和转向。地形为平地 20%、上下普通坡各 15%、上下粗糙坡各 5%、上下楼梯各 20%；仅楼梯地形启用 CTBC 引导，沿用 T0 距离升降级。不接受 `--q1_stage` 或 `--ctbc_stage`。
 
 ```bash
 python wheel_legged_gym/scripts/train.py --task=q1 --headless

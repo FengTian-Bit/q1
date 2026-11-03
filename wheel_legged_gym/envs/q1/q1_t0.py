@@ -65,6 +65,10 @@ class Q1T0CTBC(Q1CTBC):
         resample_commands(self, env_ids)
 
     def step(self, actions):
+        # Gate the teacher by the assigned terrain tile, including any stale
+        # swing state left when the curriculum switches terrain at reset.
+        stairs = self.ctbc_step_counts > 0
+        self.guidance.reset((~stairs).nonzero(as_tuple=False).flatten())
         raw = torch.maximum(torch.minimum(actions.to(self.device), self.ctbc_action_clip),
                             -self.ctbc_action_clip)
         self.ctbc_raw_actions[:] = raw
@@ -75,7 +79,7 @@ class Q1T0CTBC(Q1CTBC):
                       | (self.commands[:, 1].abs() > self.cfg.commands.yaw_idle_threshold))
             self.guidance.update(force[..., :2].norm(dim=-1),
                                  force[..., 2] > self.cfg.rewards.support_force,
-                                 bottom, moving)
+                                 bottom, moving & stairs)
         self.ctbc_reference[:] = self.guidance.reference_offsets()
         composite = raw.clone()
         composite[:, [0, 1, 3, 4]] += (self.ctbc_feedforward_weight*self.ctbc_reference

@@ -49,7 +49,7 @@ class Q1T0EntryTests(unittest.TestCase):
             snapshot = json.loads((Path(directory)/"resolved_config.json").read_text())
             self.assertEqual((snapshot["task"], snapshot["stage"]), ("q1", "t0"))
             self.assertEqual(snapshot["env"]["terrain"]["generation_mode"], "t0")
-            self.assertEqual(snapshot["env"]["commands"]["ranges"]["lin_vel_x"], [-1.8, 1.8])
+            self.assertEqual(snapshot["env"]["commands"]["ranges"]["lin_vel_x"], [-1.2, 1.2])
             self.assertEqual(snapshot["env"]["env"]["episode_length_s"], 20.0)
             self.assertEqual(snapshot["train"]["runner"]["experiment_name"], "q1")
             for filename in ("q1.urdf", "source_q1.py", "source_q1_t0.py",
