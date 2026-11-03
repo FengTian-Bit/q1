@@ -58,7 +58,7 @@
     <parent link="trunk" />
     <child link="L_thigh" />
     <axis xyz="0 1 0" />
-    <limit lower="-1.57" upper="1.57" effort="14" velocity="10" />
+    <limit lower="-1.57" upper="1.57" effort="17" velocity="30" />
   </joint>
   <link name="L_calf">
     <inertial>
@@ -93,7 +93,7 @@
     <parent link="L_thigh" />
     <child link="L_calf" />
     <axis xyz="0 1 0" />
-    <limit lower="-2.6" upper="0" effort="14" velocity="10" />
+    <limit lower="-2.6" upper="0" effort="17" velocity="30" />
   </joint>
   <link name="L_footmotor">
     <inertial>
@@ -149,7 +149,7 @@
     <parent link="L_footmotor" />
     <child link="L_foot" />
     <axis xyz="0 1 0" />
-    <limit effort="0.8" velocity="18" lower="-99999" upper="99999" />
+    <limit effort="6" velocity="30" lower="-99999" upper="99999" />
   </joint>
   <link name="R_thigh">
     <inertial>
@@ -184,7 +184,7 @@
     <parent link="trunk" />
     <child link="R_thigh" />
     <axis xyz="0 1 0" />
-    <limit lower="-1.57" upper="1.57" effort="14" velocity="10" />
+    <limit lower="-1.57" upper="1.57" effort="17" velocity="30" />
   </joint>
   <link name="R_calf">
     <inertial>
@@ -219,7 +219,7 @@
     <parent link="R_thigh" />
     <child link="R_calf" />
     <axis xyz="0 1 0" />
-    <limit lower="-2.6" upper="0" effort="14" velocity="10" />
+    <limit lower="-2.6" upper="0" effort="17" velocity="30" />
   </joint>
   <link name="R_footmotor">
     <inertial>
@@ -275,6 +275,6 @@
     <parent link="R_footmotor" />
     <child link="R_foot" />
     <axis xyz="0 1 0" />
-    <limit effort="0.8" velocity="18" lower="-99999" upper="99999" />
+    <limit effort="6" velocity="30" lower="-99999" upper="99999" />
   </joint>
 </robot>

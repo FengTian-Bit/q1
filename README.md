@@ -1,178 +1,180 @@
-# Q1 双轮腿训练
+# Q1 双轮腿机器人训练
 
-新增独立高站姿对照任务 **q1_ctbc_highcom**：左右大腿 `+0.3746 rad`、小腿 `−0.7854 rad`，机身目标高度约 `0.4360 m`，保留原 CTBC 地形阶段与电机力矩上限。训练、续训、评估及站姿选择依据见 [高站姿任务说明](wheel_legged_gym/envs/q1_ctbc_highcom/README.md)。
+基于 Wheel-Legged-Gym 与 Isaac Gym Preview 4，包含 Q1 平地、定向上楼、高站姿对照、T0 混合地形和原项目训练任务。
 
-正式任务 **q1** 现在基于 `q1_ctbc`：保留六维动作与接触抬腿指导，
-完整采用四轮足普通 T0 的有效混合地形、中心平台出生、难度行和距离升降级机制。
-速度采样也采用 T0，只去掉 Y 向平移：vx ±1.8 m/s，目标航向 ±3.14 rad，
-航向反馈 yaw 限制 ±1 rad/s，10 s 重采、20 s 回合。默认 4096 环境、30000 轮 PPO。
-`q1_ctbc` 保留定向上楼专项，`q1_flat` 保留平地基线。
+## 当前状态（2026-11-03）
+
+**目前使用 `q1_ctbc` 的 `stairs` 阶段训练。22 cm 楼梯课程训练时会出现地形难度等级降为 0 的情况，仍需要调参。** 这是当前训练反馈，22 cm 课程还不能视为已稳定收敛。
+
+正确任务名是 `q1_ctbc`，不是 `q1_cbtc`。22 cm 课程沿用参数名 `stairs20`，没有 `stairs22cm` 或 `starirs22cm` 参数。新版课程第 0 级对应 4 cm 楼梯，等级降为 0 不表示楼梯高度为 0 cm。
+
+当前使用的命令：
 
 ```bash
-# 已安装 Isaac Gym Preview 4 的训练环境，项目根目录执行
-pip install -e .
-swanlab login
+python wheel_legged_gym/scripts/train.py --task=q1_ctbc --ctbc_stage=stairs --num_envs=1024 --max_iterations=30000 --run_name=stairs --headless
+```
+
+## 安装
+
+训练需要支持 Isaac Gym Preview 4 的 Linux、NVIDIA GPU 和驱动环境。以下命令在 Linux 终端执行。沿用原项目的 Python 3.8 环境；本仓库依赖旧版 Isaac Gym 和 NumPy，不要直接套用最新 Python/PyTorch 环境。
+
+### 1. 创建环境、获取仓库
+
+```bash
+conda create -n q1 python=3.8 -y
+conda activate q1
+git clone --branch tf/q1-ctbc https://github.com/FengTian-Bit/q1.git
+cd q1
+```
+
+### 2. 安装 Isaac Gym Preview 4
+
+从 [NVIDIA 下载页](https://developer.nvidia.com/isaac-gym) 获取 Preview 4 并解压。根据下载包的 `docs/index.html` 配置匹配的驱动、CUDA 和 PyTorch。本仓库不包含 Isaac Gym 安装包。
+
+```bash
+# 替换为实际解压路径，保持 q1 环境已激活。
+python -m pip install -e /path/to/isaacgym/python
+python -c "import isaacgym; import torch; print(torch.__version__); print('CUDA available:', torch.cuda.is_available())"
+```
+
+GPU 训练前应确认 CUDA 可用，并按安装包说明运行自带示例验证仿真环境。
+
+### 3. 安装仓库依赖、检查启动
+
+在仓库根目录执行：
+
+```bash
+python -m pip install -e .
+python -m pip check
+# 小规模启动检查，不代表完成训练。
+python wheel_legged_gym/scripts/train.py --task=q1_ctbc --ctbc_stage=stairs --num_envs=32 --max_iterations=20 --logger=tensorboard --headless
+```
+
+依赖以 [setup.py](setup.py) 为准，包含 NumPy `<1.20.0`、TensorBoard、SwanLab、ONNX 等。使用默认 SwanLab 在线记录前运行 `swanlab login`；只用本地日志时，在训练命令末尾加 `--logger=tensorboard`，或使用 `--swanlab_mode=offline`。
+
+## 全部任务与训练命令
+
+所有命令在仓库根目录运行。`--headless` 关闭显示窗口；显存不足时降低 `--num_envs`。以下覆盖当前注册的全部七个任务。
+
+| 任务 | 用途 | 阶段参数 |
+|---|---|---|
+| `q1_ctbc` | 当前使用的定向上楼 | `--ctbc_stage` |
+| `q1_ctbc_highcom` | 高站姿 CTBC 对照 | `--ctbc_stage` |
+| `q1` | T0 混合地形、距离课程 | 不使用阶段参数 |
+| `q1_flat` | 平衡、低速前后运动 | `--q1_stage` |
+| `wheel_legged` | 原项目开链轮腿地形训练 | 默认配置 |
+| `wheel_legged_vmc` | 原项目 VMC 地形训练 | 默认配置 |
+| `wheel_legged_vmc_flat` | 原项目 VMC 平地训练 | 默认配置 |
+
+### 1. q1_ctbc：当前上楼任务
+
+默认 1024 环境、30000 次更新、`stairs` 阶段，20% 平地与 80% 楼梯。
+
+| 阶段 | 地形与用途 |
+|---|---|
+| `single` | 2.5–8 cm 单阶，基础抬腿 |
+| `stairs` | 4–12 cm 连续三阶，当前使用 |
+| `robust` | 4–12 cm 连续三阶，加入域随机化与观测噪声 |
+| `stairs20` | 12 级、4–22 cm 连续三阶，目前会降到等级 0，待调参 |
+
+各阶段从头训练：
+
+```bash
+python wheel_legged_gym/scripts/train.py --task=q1_ctbc --ctbc_stage=single --headless
+python wheel_legged_gym/scripts/train.py --task=q1_ctbc --ctbc_stage=stairs --num_envs=1024 --run_name=stairs --headless
+python wheel_legged_gym/scripts/train.py --task=q1_ctbc --ctbc_stage=robust --headless
+# 22 cm 实验课程：目前存在难度降为 0 的问题，仍需调参。
+python wheel_legged_gym/scripts/train.py --task=q1_ctbc --ctbc_stage=stairs20 --num_envs=1024 --run_name=stairs22_dense --headless
+```
+
+22 cm 课程配套设置：踏面固定 0.5 m、速度 0.15–0.20 m/s、抬轮参考 8–17.6 cm、摆动 0.85 s；髋/膝动作偏移范围为 ±0.70/±1.35 rad。每 10 个有效楼梯回合判定课程，成功至少 8 次升级，少于 3 次降级。卡阶检测目前只记录，不直接终止回合。
+
+续训或切换课程：
+
+```bash
+# RUN_NAME 替换为 logs/q1_ctbc 下的运行目录名。
+# CHECKPOINT 替换为模型编号，例如 model_3000.pt 对应 3000。
+python wheel_legged_gym/scripts/train.py --task=q1_ctbc --ctbc_stage=stairs --resume --load_run=RUN_NAME --checkpoint=CHECKPOINT --headless
+python wheel_legged_gym/scripts/train.py --task=q1_ctbc --ctbc_stage=robust --resume --load_run=RUN_NAME --checkpoint=CHECKPOINT --headless
+python wheel_legged_gym/scripts/train.py --task=q1_ctbc --ctbc_stage=stairs20 --resume --load_run=RUN_NAME --checkpoint=CHECKPOINT --run_name=stairs22_dense --headless
+```
+
+续训需要模型旁的 `resolved_config.json`。省略 `--ctbc_stage` 时保留保存配置；显式指定时应用当前阶段预设，因此启用新的 4–22 cm 配置必须指定 `--ctbc_stage=stairs20`。首次迁入新高阶段重新计时引导渐入和退火，同配置续训保留起点。详见 [CTBC 说明](wheel_legged_gym/envs/q1_ctbc/README.md)。
+
+### 2. q1_ctbc_highcom：高站姿对照
+
+默认 `single`、4096 环境，修改名义站姿及配套引导。这里的 `stairs20` 仍是六级 10–20 cm、8–16 cm 引导、0.8 s 摆动，与普通 `q1_ctbc` 新版课程不同。
+
+```bash
+python wheel_legged_gym/scripts/train.py --task=q1_ctbc_highcom --ctbc_stage=single --headless
+python wheel_legged_gym/scripts/train.py --task=q1_ctbc_highcom --ctbc_stage=stairs --headless
+python wheel_legged_gym/scripts/train.py --task=q1_ctbc_highcom --ctbc_stage=robust --headless
+python wheel_legged_gym/scripts/train.py --task=q1_ctbc_highcom --ctbc_stage=stairs20 --headless
+# 从本任务已训练的运行进入高阶段。
+python wheel_legged_gym/scripts/train.py --task=q1_ctbc_highcom --ctbc_stage=stairs20 --resume --load_run=HIGHCOM_RUN --checkpoint=CHECKPOINT --headless
+```
+
+不能把普通 `q1_ctbc` 模型直接作为该任务的完整续训状态。详见 [高站姿说明](wheel_legged_gym/envs/q1_ctbc_highcom/README.md)。
+
+### 3. q1：T0 混合地形
+
+默认 4096 环境、30000 次更新，使用 T0 混合地形、距离升降级及速度指令。不接受 `--q1_stage` 或 `--ctbc_stage`。
+
+```bash
 python wheel_legged_gym/scripts/train.py --task=q1 --headless
-python wheel_legged_gym/scripts/play.py --task=q1 --load_run=Q1_T0_RUN --num_envs=1
-python wheel_legged_gym/scripts/keyboard_play.py --task=q1 --load_run=Q1_T0_RUN --terrain=stairs_down
+python wheel_legged_gym/scripts/train.py --task=q1 --resume --load_run=Q1_RUN --checkpoint=CHECKPOINT --headless
+# 从 CTBC 运行迁移到 T0，替换为实际运行目录。
+python wheel_legged_gym/scripts/train.py --task=q1 --resume --load_run=/path/to/q1/logs/q1_ctbc/CTBC_RUN --checkpoint=CHECKPOINT --headless
 ```
 
-当前配置在 `wheel_legged_gym/envs/q1/q1_t0_config.py`。不再使用旧的 `--q1_stage`；
-新 q1 同任务恢复需配套的 `resolved_config.json`，旧非 CTBC 的 q1 模型会明确拒绝。
-已有 CTBC 模型可用 `--resume --load_run=/绝对路径/logs/q1_ctbc/CTBC_RUN` 迁移，
-恢复网络和优化器后启动 T0 地形课程及新的指导渐入/退火，输出仍进入 `logs/q1`。
+详见 [T0 说明](wheel_legged_gym/envs/q1/README.md)。
 
-播放默认关闭指导评估纯策略，键盘布局沿用 W/S、A/D、X、空格、F；自动播放保留 T0 随机指令。
-T0 最高难度行约 24 cm 单阶，踏面网格取整通常为 20 cm；`stairs_down` 从中心向外是上楼。
-指导仍采用 8–16 cm 高抬腿参考和 Q1 原关节/轮速/力矩约束，不保证能跟踪 T0 的全部速度或地形。
-周期视频默认关闭，日志仍使用 SwanLab 项目 `Q1` 并保留本地 TensorBoard。
+### 4. q1_flat：平地基线
 
-具体几何、升降级、续训和播放见 [q1 任务说明](wheel_legged_gym/envs/q1/README.md)。
-本地 CPU 接口测试不代表已验证真实仿真收敛。
-
-## q1_ctbc 盲上楼梯专项
-
-独立任务 `q1_ctbc` 提供定向上楼、接触后交替抬腿指导、累计轮数退火和真实落台成功判据。
-默认对齐桌面 `log` 保存的训练：1024 环境、30000 轮、`stairs` 阶段，4–12 cm 连续三阶。
-显式指定 `--ctbc_stage=single` 仍可训练 2.5–8 cm 单阶；`q1` 使用上述 T0 混合地形课程。
-详细差异见 [训练对齐记录](docs/q1_ctbc_training_alignment.md)。
+先训练平衡，再从通过评估的模型续训低速前后运动。当前入口只支持 `balance` 和 `low_speed`，会拒绝 `turning`。
 
 ```bash
-python wheel_legged_gym/scripts/train.py --task=q1_ctbc --headless
-# RUN_NAME 和 CHECKPOINT 替换为本任务的实际运行目录和模型编号。
-python wheel_legged_gym/scripts/evaluate_q1_ctbc.py --load_run=RUN_NAME --checkpoint=CHECKPOINT --headless --heights=4,8,12 --steps=3 --guidance=both
-```
-
-正式验收使用 `--guidance=off` 的纯网络成功率；CPU 测试尚不能证明物理上楼能力。
-阶段续训、参数、评估单位与验证范围见 [CTBC 任务说明](wheel_legged_gym/envs/q1_ctbc/README.md)。
-
-已有低台阶策略可用 `--ctbc_stage=stairs20 --resume --load_run=RUN_NAME --checkpoint=-1`
-启用 12 级、4–22 cm 连续三阶课程，踏面固定 0.5 m。配套引导从 8 cm 增至 17.6 cm、
-摆动时间 0.85 s，扩大腿目标范围，保留原动作归一化尺度和 14 N·m 腿力矩上限。
-每 10 回合判定升降级，新增分高度成功率、卡阶和逐关节裁剪诊断。
-首次迁入新配置会重新计时指导渐入与退火，同配置续训保留时钟。22 cm 实际能力仍需评估。
-
----
-
-## q1_flat 基线与原项目说明
-
-基于 Wheel-Legged-Gym 的个人 Q1 训练仓库。
-远程仓库：`git@github.com:FengTian-Bit/q1.git`。
-原项目与依赖的 BSD 许可、版权声明保留在 LICENSE 和源码中。
-
-新增任务 **q1_flat**：开链关节位置 PD + 轮速度反馈，平地固定高度、零转向，
-支持纯平衡与低速前后行驶。参见 [Q1 训练说明](wheel_legged_gym/envs/q1_flat/README.md)。
-
-```bash
-# 项目根目录，已安装 Isaac Gym Preview 4 的 Linux Python 环境
-pip install -e .
-python wheel_legged_gym/scripts/train.py --task=q1_flat --q1_stage=balance --num_envs=32 --max_iterations=20
 python wheel_legged_gym/scripts/train.py --task=q1_flat --q1_stage=balance --num_envs=1024 --max_iterations=2000 --headless
-# 平衡通过后，按训练说明从指定 checkpoint 继续低速阶段。
+python wheel_legged_gym/scripts/train.py --task=q1_flat --q1_stage=low_speed --resume --load_run=BALANCE_RUN --checkpoint=CHECKPOINT --num_envs=1024 --max_iterations=2000 --headless
+# 也可从头启动低速训练。
+python wheel_legged_gym/scripts/train.py --task=q1_flat --q1_stage=low_speed --num_envs=1024 --headless
 ```
 
-训练日志、检查点、导出模型、视频和本地环境不提交 Git。URDF、STL、配置、源码和测试纳入版本管理。
-当前配置经过静态模型检查和 CPU 控制/训练接口测试；未在 Isaac Gym 中验证收敛。
+详见 [平地说明](wheel_legged_gym/envs/q1_flat/README.md)。
 
----
+### 5. 原项目三个任务
 
-以下保留原项目说明。
+这些任务使用原项目机器人和配置，不是 Q1 上楼任务。
 
-# Wheel Legged Gym Environments #
-
-### Acknowledgment
-
-The implementation of Wheel-Legged-Gym relies on resources from [legged_gym](https://github.com/leggedrobotics/legged_gym) and [rsl_rl](https://github.com/leggedrobotics/rsl_rl) projects, created by the [Robotic Systems Lab](https://rsl.ethz.ch/).
-
-Related Links:
-
-- [Learning to Walk in Minutes Using Massively Parallel Deep Reinforcement Learning](https://arxiv.org/abs/2109.11978)
-- [Concurrent Training of a Control Policy and a State Estimator for Dynamic and Robust Legged Locomotion](https://arxiv.org/abs/2202.05481)
-
-### Installation ###
-1. Create a new python virtual env with python 3.6, 3.7 or 3.8 (3.8 recommended)
-2. Install pytorch with cuda from https://pytorch.org/get-started/
-3. Install Isaac Gym
-   - Download and install Isaac Gym Preview 4 from https://developer.nvidia.com/isaac-gym
-   - `cd isaacgym/python && pip install -e .`
-   - Try running an example `cd examples && python 1080_balls_of_solitude.py`
-   - For troubleshooting check docs `isaacgym/docs/index.html`)
-4. Install wheel_legged_gym
-    - Clone this repository
-   - `cd Wheel-Legged-Gym && pip install -e .`
-
-### Code Structure ###
-1. Each environment is defined by an env file (`legged_robot.py`) and a config file (`legged_robot_config.py`). The config file contains two classes: one containing  all the environment parameters (`LeggedRobotCfg`) and one for the training parameters (`LeggedRobotCfgPPo`).  
-2. Both env and config classes use inheritance.  
-3. Each non-zero reward scale specified in `cfg` will add a function with a corresponding name to the list of elements which will be summed to get the total reward.  
-4. Tasks must be registered using `task_registry.register(name, EnvClass, EnvConfig, TrainConfig)`. This is done in `envs/__init__.py`, but can also be done from outside of this repository.  
-
-### Usage ###
-1. Train:  
-    ```python wheel_legged_gym/scripts/train.py --task=wheel_legged_vmc_flat```
-    -  To run on CPU add following arguments: `--sim_device=cpu`, `--rl_device=cpu` (sim on CPU and rl on GPU is possible).
-    -  To run headless (no rendering) add `--headless`.
-    - **Important**: To improve performance, once the training starts press `v` to stop the rendering. You can then enable it later to check the progress.
-    - The trained policy is saved in `logs/<experiment_name>/<date_time>_<run_name>/model_<iteration>.pt`. Where `<experiment_name>` and `<run_name>` are defined in the train config.
-    - Use TensorBoard to monitor training process `tensorboard --logdir=./ --port=8080` 
-    -  The following command line arguments override the values set in the config files:
-     - --task TASK: Task name.
-     - --resume:   Resume training from a checkpoint
-     - --experiment_name EXPERIMENT_NAME: Name of the experiment to run or load.
-     - --run_name RUN_NAME:  Name of the run.
-     - --load_run LOAD_RUN:   Name of the run to load when resume=True. If -1: will load the last run.
-     - --checkpoint CHECKPOINT:  Saved model checkpoint number. If -1: will load the last checkpoint.
-     - --num_envs NUM_ENVS:  Number of environments to create.
-     - --seed SEED:  Random seed.
-     - --max_iterations MAX_ITERATIONS:  Maximum number of training iterations.
-     - --exptid EXPTID:  Experiment ID.
-2. Play a trained policy:
-   ```python wheel_legged_gym/scripts/play.py --task=wheel_legged_vmc_flat```
-    - By default, the loaded policy is the last model of the last run of the experiment folder.
-    - Other runs/model iteration can be selected by setting `load_run` and `checkpoint` in the train config.
-3. Existing tasks:
-   - wheel_legged: End-to-End training for open-chain robot in various terrains.
-   - wheel_legged_vmc: Using VMC to unify motion control of open-chain and closed-chain mechanisms facilitates deploying policy onto closed-chain robots.
-   - wheel_legged_vmc_flat: Train robot in flat terrain (low VRAM requirements).
-
-### Adding a new environment ###
-The base environment `legged_robot` implements a rough terrain locomotion task. The corresponding cfg does not specify a robot asset (URDF/ MJCF) and has no reward scales. 
-
-1. Add a new folder to `envs/` with `'<your_env>_config.py`, which inherit from an existing environment cfgs  
-2. If adding a new robot:
-    - Add the corresponding assets to `resources/`.
-    - In `cfg` set the asset path, define body names, default_joint_positions and PD gains. Specify the desired `train_cfg` and the name of the environment (python class).
-    - In `train_cfg` set `experiment_name` and `run_name`
-3. (If needed) implement your environment in <your_env>.py, inherit from an existing environment, overwrite the desired functions and/or add your reward functions.
-4. Register your env in `isaacgym_anymal/envs/__init__.py`.
-5. Modify/Tune other parameters in your `cfg`, `cfg_train` as needed. To remove a reward set its scale to zero. Do not modify parameters of other envs!
-
-
-### Troubleshooting ###
-1. If you get the following error: `ImportError: libpython3.8m.so.1.0: cannot open shared object file: No such file or directory`, do: `sudo apt install libpython3.8`. It is also possible that you need to do `export LD_LIBRARY_PATH=/path/to/libpython/directory` / `export LD_LIBRARY_PATH=/path/to/conda/envs/your_env/lib`(for conda user. Replace /path/to/ to the corresponding path.).
-
-### Known Issues ###
-1. The contact forces reported by `net_contact_force_tensor` are unreliable when simulating on GPU with a triangle mesh terrain. A workaround is to use force sensors, but the force are propagated through the sensors of consecutive bodies resulting in an undesirable behaviour. However, for a legged robot it is possible to add sensors to the feet/end effector only and get the expected results. When using the force sensors make sure to exclude gravity from the reported forces with `sensor_options.enable_forward_dynamics_forces`. Example:
-```
-    sensor_pose = gymapi.Transform()
-    for name in feet_names:
-        sensor_options = gymapi.ForceSensorProperties()
-        sensor_options.enable_forward_dynamics_forces = False # for example gravity
-        sensor_options.enable_constraint_solver_forces = True # for example contacts
-        sensor_options.use_world_frame = True # report forces in world frame (easier to get vertical components)
-        index = self.gym.find_asset_rigid_body_index(robot_asset, name)
-        self.gym.create_asset_force_sensor(robot_asset, index, sensor_pose, sensor_options)
-    (...)
-
-    sensor_tensor = self.gym.acquire_force_sensor_tensor(self.sim)
-    self.gym.refresh_force_sensor_tensor(self.sim)
-    force_sensor_readings = gymtorch.wrap_tensor(sensor_tensor)
-    self.sensor_forces = force_sensor_readings.view(self.num_envs, 4, 6)[..., :3]
-    (...)
-
-    self.gym.refresh_force_sensor_tensor(self.sim)
-    contact = self.sensor_forces[:, :, 2] > 1.
+```bash
+python wheel_legged_gym/scripts/train.py --task=wheel_legged --headless
+python wheel_legged_gym/scripts/train.py --task=wheel_legged_vmc --headless
+python wheel_legged_gym/scripts/train.py --task=wheel_legged_vmc_flat --headless
 ```
 
+## 日志、续训与评估
 
+模型通常保存在 `logs/<experiment_name>/<运行目录>/model_<编号>.pt`，请保留同目录配置快照。`--checkpoint=-1` 选择指定运行的最新模型；排查训练退化时应指定已验证的模型编号，避免直接使用退化后的最新模型。当前 Q1 训练流程的 `--max_iterations` 表示本次追加的更新次数。
 
+```bash
+tensorboard --logdir=logs --port=8080
+# 当前 stairs：固定三阶，比较纯策略和指导开启表现。
+python wheel_legged_gym/scripts/evaluate_q1_ctbc.py --task=q1_ctbc --load_run=RUN_NAME --checkpoint=CHECKPOINT --headless --num_envs=64 --heights=4,6,8,10,12 --tread=0.35 --steps=3 --episodes=100 --speed=0.2 --guidance=both
+# 22 cm 课程评估：高度单位 cm，踏面单位 m。
+python wheel_legged_gym/scripts/evaluate_q1_ctbc.py --task=q1_ctbc --load_run=HIGH_RUN_NAME --checkpoint=CHECKPOINT --headless --num_envs=64 --heights=4,5.5,7,8.5,10.5,12,13.5,15,17,18.5,20,22 --tread=0.5 --steps=3 --episodes=100 --speed=0.2 --guidance=both
+# CTBC 普通播放默认是 5 cm 单阶，不是整个训练课程。
+python wheel_legged_gym/scripts/play.py --task=q1_ctbc --load_run=RUN_NAME --checkpoint=CHECKPOINT --num_envs=1
+python wheel_legged_gym/scripts/play.py --task=q1 --load_run=Q1_RUN --checkpoint=CHECKPOINT --num_envs=1
+```
+
+以 `--guidance=off` 的纯策略成功率判断是否学会爬阶。22 cm 课程应结合分高度成功率、卡阶率、动作裁剪率和探索标准差调参，不能仅看总回报。CPU 回归测试通过不等于物理仿真收敛或实机通过。
+
+## 项目文件与致谢
+
+- 任务注册：`wheel_legged_gym/envs/__init__.py`。
+- 训练入口：`wheel_legged_gym/scripts/train.py`。
+- 上楼配置：`wheel_legged_gym/envs/q1_ctbc/q1_ctbc_config.py`。
+- 历史基线：[训练对齐记录](docs/q1_ctbc_training_alignment.md)。
+- 日志、检查点、导出模型、视频和本地环境不提交 Git；机器人资源、源码、配置与测试纳入版本管理。
+
+本项目基于 Wheel-Legged-Gym，使用 [legged_gym](https://github.com/leggedrobotics/legged_gym) 和 [rsl_rl](https://github.com/leggedrobotics/rsl_rl) 的工作。原项目和依赖的版权声明保留在源码和 [LICENSE](LICENSE) 中。
