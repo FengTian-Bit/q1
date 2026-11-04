@@ -119,6 +119,14 @@ def prepare_q1_t0_training(env_cfg, train_cfg, args, root_dir, get_load_path):
         entry_iteration = _load_checkpoint_iteration(checkpoint) if migrated else None
         apply_config(env_cfg, snapshot["env"])
         apply_config(train_cfg, snapshot["train"])
+        # Legacy runs must not silently acquire the new reward or estimator
+        # defaults merely because their snapshots predate these switches.
+        if hasattr(env_cfg, "rewards"):
+            env_cfg.rewards.reward_version = snapshot["env"].get("rewards", {}).get("reward_version", 0)
+            if env_cfg.rewards.reward_version != 5:
+                env_cfg.rewards.scales.parking_velocity = 0.0
+        train_cfg.policy.velocity_estimation_enabled = snapshot["train"].get("policy", {}).get(
+            "velocity_estimation_enabled", True)
         if "feedforward_start_iteration" not in snapshot["env"]["ctbc"]:
             env_cfg.ctbc.feedforward_start_iteration = 0
         if migrated:

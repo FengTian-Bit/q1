@@ -99,6 +99,9 @@ def train(args):
                                   "q1_ctbc_highcom", "run_config.py"),
                      os.path.join(task_registry.log_dir, "source_highcom_run_config.py"))
         if args.task == "q1":
+            copyfile(os.path.join(WHEEL_LEGGED_GYM_ROOT_DIR, "wheel_legged_gym", "envs",
+                                  "q1_tcn", "parking.py"),
+                     os.path.join(task_registry.log_dir, "source_t0_parking.py"))
             for filename in ("q1_t0.py", "q1_t0_config.py", "t0_terrain.py",
                              "t0_curriculum.py", "t0_commands.py", "t0_run_config.py"):
                 copyfile(os.path.join(WHEEL_LEGGED_GYM_ROOT_DIR, "wheel_legged_gym", "envs", "q1", filename),

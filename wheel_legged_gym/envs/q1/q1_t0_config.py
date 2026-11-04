@@ -56,6 +56,54 @@ def configure_q1_t0(cfg):
 
 
 class Q1T0Cfg(Q1CTBCCfg):
+    class rewards(Q1CTBCCfg.rewards):
+        # Locked q1_tcn reward v5; CTBC-only teacher terms stay inherited.
+        reward_version = 5
+        tracking_sigma = 0.0025
+        idle_tracking_sigma = 0.0004
+        yaw_tracking_sigma = tracking_sigma
+        height_sigma = 0.0025
+        parking_speed_threshold = 0.02
+        parking_yaw_threshold = 0.05
+        parking_brake_s = 0.5
+        parking_ramp_s = 0.5
+        parking_deadband_m = 0.005
+        parking_scale_m = 0.03
+        parking_velocity_scale = 0.02
+        parking_velocity_deadband = 0.001
+
+        class scales(Q1CTBCCfg.rewards.scales):
+            alive = 0.0
+            nominal_state = 0.0
+            dof_vel = 0.0
+            dof_acc = 0.0
+            action_smooth = 0.0
+            tracking_lin_vel = 3.0
+            tracking_ang_vel = 1.5
+            parking_drift = -3.0
+            parking_velocity = -0.5
+            orientation = -20.0
+            base_height = 0.5
+            lateral_velocity = -0.5
+            lin_vel_z = -0.2
+            ang_vel_xy = -0.1
+            action_rate = -0.02
+            torques = -0.0001
+            collision = -1.0
+            dof_pos_limits = -2.0
+            termination = -200.0
+            # Replace the old locomotion objective rather than summing it
+            # with v5 (in particular, avoid double-counting yaw tracking).
+            turning_yaw_tracking = 0.0
+            actual_posture = 0.0
+            leg_symmetry = 0.0
+            rolling_contact = 0.0
+            rolling_leg_motion = 0.0
+            rolling_slip = 0.0
+            speed_error = 0.0
+            parking_wheel_speed = 0.0
+            straight_path = 0.0
+
     class env(Q1CTBCCfg.env):
         # T0 keeps its existing batch when CTBC defaults follow the saved run.
         num_envs = 4096
@@ -66,6 +114,9 @@ class Q1T0Cfg(Q1CTBCCfg):
 
 
 class Q1T0CfgPPO(Q1CTBCCfgPPO):
+    class policy(Q1CTBCCfgPPO.policy):
+        velocity_estimation_enabled = False
+
     class runner(Q1CTBCCfgPPO.runner):
         experiment_name = "q1"
         run_name = "t0"

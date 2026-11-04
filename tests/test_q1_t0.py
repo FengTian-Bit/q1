@@ -16,6 +16,7 @@ from test_q1_t0_terrain import build as build_terrain
 
 NAMES = dict(NAMESPACE, deepcopy=deepcopy,
              Q1T0Terrain=lambda cfg, count: build_terrain(cfg)[0])
+load_code("wheel_legged_gym/envs/q1_tcn/parking.py", NAMES)
 for filename in ("t0_commands.py", "t0_curriculum.py", "q1_t0_config.py", "q1_t0.py"):
     load_code("wheel_legged_gym/envs/q1/" + filename, NAMES)
 

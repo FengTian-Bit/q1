@@ -19,9 +19,16 @@ class SequenceInferencePolicy(torch.nn.Module):
         # change its training mode. The critic and action noise are not needed.
         self.encoder = deepcopy(actor_critic.encoder).cpu().eval()
         self.actor = deepcopy(actor_critic.actor).cpu().eval()
+        self.velocity_estimation_enabled = getattr(actor_critic, "velocity_estimation_enabled", True)
+        self.latent_dim = actor_critic.latent_dim
 
     def forward(self, obs, obs_history):
-        latent = self.encoder(obs_history)
+        if self.velocity_estimation_enabled:
+            latent = self.encoder(obs_history)
+        else:
+            # Keep the public two-input export interface without running the
+            # estimator, including ONNX exporters that prune unused inputs.
+            latent = obs_history.sum(dim=-1, keepdim=True).expand(-1, self.latent_dim)*0.0
         return self.actor(torch.cat((obs, latent), dim=-1))
 
 

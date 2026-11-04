@@ -1,5 +1,13 @@
 # Q1：CTBC 控制与四轮足 T0 地形课程
 
+新训练的基础运动奖励采用锁定基础版 `locked_base_v1` 的奖励 v5：线速度跟踪权重 3.0，移动/停车指数核分母分别为 0.0025/0.0004；偏航角速度跟踪权重 1.5，并使用相同的分母切换。停车位置死区 5 mm、距离尺度 3 cm，保留 0.5 s 制动与 0.5 s 渐入、停车速度惩罚。原运动奖励中 v5 未使用的项关闭，CTBC 专用指导奖励保留。地形、指令范围、控制器、域随机化和 PPO 超参数保持现状，没有迁入 TCN 的网络、里程计观测或扩速课程。
+
+`Q1T0CfgPPO.policy.velocity_estimation_enabled=False` 关闭速度估计器前向及辅助优化器，训练、播放和 ONNX 导出均使用零估计槽，保持 31/155 维输入和原网络参数形状。Critic 仍使用仿真真值，Actor 不增加真值速度输入。旧检查点续训/播放继续恢复其保存的奖励与估计器设置；使用本次配置请新建训练：
+
+```bash
+python wheel_legged_gym/scripts/train.py --task=q1 --run_name=t0_reward_v5 --headless
+```
+
 当前 `--task=q1` 注册为 `Q1T0CTBC(Q1CTBC)`：沿用双轮足的接触抬腿指导、六维动作、执行动作历史、31 维 Actor、151 维 critic、五帧历史和 PPO，地形生成与距离课程基于四轮足普通 T0，地形比例采用当前 Q1 专用配置。速度采样也采用 T0，仅去掉 Y 向平移。独立 `q1_ctbc` 保持原来的定向上楼课程；`q1_flat` 保持平地基线。
 
 旧 `q1.py` / `q1_config.py` 仍是 CTBC 的内部运动基类，避免循环继承；当前训练配置在 **`q1_t0_config.py`**，环境在 **`q1_t0.py`**。旧实验记录移至 [legacy_locomotion.md](legacy_locomotion.md)。
