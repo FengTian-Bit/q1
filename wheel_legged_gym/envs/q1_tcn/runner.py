@@ -66,6 +66,8 @@ class TCNPpoRunner:
         env, model = self.env, self.model
         batch = {}
         failures, timeouts = 0, 0
+        reward_metrics = {}
+        action_clipping = 0.0
         with torch.no_grad():
             for _ in range(self.cfg.runner.num_steps_per_env):
                 obs, history = env.get_observations()
@@ -76,6 +78,9 @@ class TCNPpoRunner:
                 actions = distribution.sample()
                 values = model.evaluate(critic_obs)
                 _, _, rewards, dones, infos, _ = env.step(actions.to(env.device))
+                for name, term in env.reward_terms.items():
+                    reward_metrics[name] = reward_metrics.get(name, 0.0) + term.mean().item()
+                action_clipping += env.transition_metrics["action_clipping"].mean().item()
                 rewards, dones = rewards.to(self.device).clone(), dones.to(self.device).bool()
                 environment_rewards = rewards.clone()
                 timeout = infos.get("time_outs", torch.zeros_like(dones)).to(self.device).bool()
@@ -94,6 +99,9 @@ class TCNPpoRunner:
                 for name, value in transition.items():
                     batch.setdefault(name, []).append(value.clone())
             last_values = model.evaluate(env.get_privileged_observations().to(self.device))
+        steps = self.cfg.runner.num_steps_per_env
+        self.rollout_reward_metrics = {"reward_"+name: value/steps for name, value in reward_metrics.items()}
+        self.rollout_action_clipping = action_clipping/steps
         return {key: torch.stack(value) for key, value in batch.items()}, last_values, failures, timeouts
 
     def save(self):
@@ -141,6 +149,9 @@ class TCNPpoRunner:
                 row = dict(iteration=self.iteration, total_steps=self.total_steps,
                     mean_training_reward=float(batch["environment_rewards"].mean()), failures=failures,
                     timeouts=timeouts, learning_rate=self.alg.learning_rate, **metrics)
+                row.update(self.rollout_reward_metrics)
+                row["action_clipping_fraction"] = self.rollout_action_clipping
+                row["policy_std_max"] = float(self.model.log_std.detach().clamp(-5, 2).exp().max())
                 if writer is None:
                     writer = csv.DictWriter(stream, fieldnames=list(row))
                     if stream.tell() == 0:

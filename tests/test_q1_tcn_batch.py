@@ -18,7 +18,7 @@ SPEC.loader.exec_module(BATCH)
 
 def checkpoint(path, iteration, seed, ablation, num_envs):
     config = dict(task="q1_tcn", schema_version=1,
-        env=dict(seed=seed, env=dict(num_envs=num_envs)),
+        env=dict(seed=seed, env=dict(num_envs=num_envs), rewards=dict(reward_version=2)),
         train=dict(seed=seed, ablation=ablation, runner=dict(num_steps_per_env=48)))
     info = dict(iteration=iteration, total_steps=iteration*num_envs*48, config=config)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -57,7 +57,8 @@ class FakeProcesses:
             start, end = command.index("--eval_seeds")+1, command.index("--duration")
             summary = dict(checkpoint=str(model), training_seed=info["config"]["train"]["seed"],
                 ablation=info["config"]["train"]["ablation"],
-                evaluation=dict(seeds=[int(item) for item in command[start:end]],
+                evaluation=dict(protocol_version=3, command_height_m=0.397,
+                    seeds=[int(item) for item in command[start:end]],
                     num_envs=int(value("--num_envs")), duration_s=float(value("--duration")), pulse_force_n=8.0),
                 scenarios={scenario: {} for scenario in BATCH.SCENARIOS})
             (output / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
@@ -158,6 +159,40 @@ class BatchTests(unittest.TestCase):
                 path, iteration = BATCH.latest_checkpoint(run, args, "A1", 1, reader)
             self.assertEqual(iteration, 100)
             self.assertEqual(path.name, "model_100.pt")
+
+    def test_legacy_zero_height_evaluation_is_not_reused(self):
+        with tempfile.TemporaryDirectory(dir=ROOT) as folder:
+            args = BATCH.parse_args(["--output_root", folder, "--seeds", "1", "--ablations", "A1"])
+            model = Path(folder)/"A1_seed1/model_3000.pt"
+            checkpoint(model, 3000, 1, "A1", 1024)
+            output = model.parent/"evaluation"
+            process = FakeProcesses()
+            process(BATCH.eval_command(args, model, output), cwd=str(ROOT))
+            summary = output/"summary.json"
+            saved = BATCH.read_json(summary)
+            saved["evaluation"].pop("protocol_version")
+            saved["evaluation"].pop("command_height_m")
+            summary.write_text(json.dumps(saved), encoding="utf-8")
+            self.assertIsNone(BATCH.matching_evaluation(model.parent, model, args, 1, "A1"))
+
+    def test_old_rewards_require_explicit_evaluate_only(self):
+        with tempfile.TemporaryDirectory(dir=ROOT) as folder:
+            args = BATCH.parse_args(["--output_root", folder, "--ablations", "A1", "--seeds", "1"])
+            model = Path(folder)/"A1_seed1/model_3000.pt"
+            saved = checkpoint(model, 3000, 1, "A1", 1024)["config"]
+            saved["env"]["rewards"].pop("reward_version")
+            with self.assertRaises(ValueError):
+                BATCH.validate_saved_run(saved, args, "A1", 1)
+            args.evaluate_only = True
+            BATCH.validate_saved_run(saved, args, "A1", 1)
+
+    def test_evaluate_only_never_starts_missing_training(self):
+        with tempfile.TemporaryDirectory(dir=ROOT) as folder:
+            args = BATCH.parse_args(["--output_root", folder, "--ablations", "A1", "--seeds", "1", "--evaluate_only"])
+            process = FakeProcesses()
+            with redirect_stdout(io.StringIO()), self.assertRaises(ValueError):
+                BATCH.run_batch(args, read_checkpoint, process)
+            self.assertEqual(process.commands, [])
 
 
 if __name__ == "__main__":

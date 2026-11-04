@@ -32,7 +32,7 @@ def main():
         raise ValueError("max_iterations must be positive")
     validate_config(env_cfg, train_cfg)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output = Path(args.output_dir) if args.output_dir else Path(WHEEL_LEGGED_GYM_ROOT_DIR) / "logs" / "q1_tcn" / (
+    output = Path(args.output_dir) if args.output_dir else Path(WHEEL_LEGGED_GYM_ROOT_DIR) / "logs" / train_cfg.runner.experiment_name / (
         "{}_{}_seed{}".format(stamp, args.ablation, train_cfg.seed))
     if output.exists() and any(output.iterdir()):
         raise ValueError("Training output directory must be empty: {}".format(output))
@@ -48,6 +48,8 @@ def main():
             copy2(source, source_dir / source.name)
         for name in ("q1_flat.py", "q1_flat_config.py"):
             copy2(Path(__file__).parent.parent / "q1_flat" / name, source_dir / name)
+        for name in ("legged_robot.py", "legged_robot_config.py"):
+            copy2(Path(__file__).parent.parent / "base" / name, source_dir / ("base_"+name))
         copy2(env_cfg.asset.file.format(WHEEL_LEGGED_GYM_ROOT_DIR=WHEEL_LEGGED_GYM_ROOT_DIR), output / "q1.urdf")
         env.reset()
         # Resume restores optimizer/counters; the simulator starts fresh episodes.

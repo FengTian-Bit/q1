@@ -29,13 +29,16 @@ def parse_args(argv=None):
     parser.add_argument("--max_iterations", type=int, default=3000, help="Total target iterations per experiment")
     parser.add_argument("--sim_device", default="cuda:0")
     parser.add_argument("--rl_device", default="cuda:0")
-    parser.add_argument("--output_root", type=Path, default=Path("logs/q1_tcn"))
+    parser.add_argument("--output_root", type=Path, default=Path("logs/q1_tcn_reward_v2"))
     parser.add_argument("--eval_num_envs", type=int, default=64)
     parser.add_argument("--eval_seeds", nargs="+", type=int, default=[101, 102, 103])
     parser.add_argument("--eval_duration", type=float, default=12.0)
     parser.add_argument("--train_only", action="store_true", help="Skip evaluation and comparison")
+    parser.add_argument("--evaluate_only", action="store_true", help="Evaluate existing complete checkpoints, including reward v1")
     parser.add_argument("--dry_run", action="store_true", help="Print the fresh-run plan without running or writing files")
     args = parser.parse_args(argv)
+    if args.train_only and args.evaluate_only:
+        parser.error("train_only and evaluate_only cannot be combined")
     if min(args.num_envs, args.max_iterations, args.eval_num_envs) < 1:
         parser.error("Environment counts and max_iterations must be positive")
     if not 7 <= args.eval_duration < float("inf"):
@@ -96,6 +99,9 @@ def checkpoint_info(path):
 def validate_saved_run(saved, args, ablation, seed):
     if saved.get("task") != "q1_tcn" or saved.get("schema_version") != 1:
         raise ValueError("Expected a q1_tcn schema_version=1 snapshot")
+    if not getattr(args, "evaluate_only", False) and saved["env"].get("rewards", {}).get("reward_version", 1) != 2:
+        raise ValueError("Reward v1 run cannot be reused for reward v2 training. Use a new output_root, "
+                         "or --evaluate_only to re-evaluate the old checkpoints")
     if (saved["train"]["ablation"] != ablation or saved["train"]["seed"] != seed
             or saved["env"]["seed"] != seed or saved["env"]["env"]["num_envs"] != args.num_envs):
         raise ValueError("Existing run has a different ablation, seed or num_envs; use a different output_root")
@@ -145,6 +151,8 @@ def matching_evaluation(run_dir, checkpoint, args, seed, ablation):
             continue
         protocol = saved.get("evaluation", {})
         if (Path(saved.get("checkpoint", "")).resolve() != checkpoint.resolve()
+                or protocol.get("protocol_version") != 3
+                or protocol.get("command_height_m", 0) <= 0
                 or saved.get("training_seed") != seed or saved.get("ablation") != ablation
                 or protocol.get("seeds") != args.eval_seeds
                 or protocol.get("num_envs") != args.eval_num_envs
@@ -201,7 +209,8 @@ def run_batch(args, read_checkpoint=checkpoint_info, run_process=subprocess.run)
         for seed in args.seeds:
             for ablation in args.ablations:
                 run_dir = args.output_root / "{}_seed{}".format(ablation, seed)
-                print_command(train_command(args, ablation, seed, run_dir))
+                if not args.evaluate_only:
+                    print_command(train_command(args, ablation, seed, run_dir))
                 if not args.train_only:
                     checkpoint = run_dir / "model_{}.pt".format(args.max_iterations)
                     print_command(eval_command(args, checkpoint, run_dir / "evaluation"))
@@ -226,6 +235,8 @@ def run_batch(args, read_checkpoint=checkpoint_info, run_process=subprocess.run)
                 validate_saved_run(read_json(snapshot), args, ablation, seed)
             checkpoint, iteration = latest_checkpoint(run_dir, args, ablation, seed, read_checkpoint)
             if iteration < args.max_iterations:
+                if args.evaluate_only:
+                    raise ValueError("evaluate_only requires a complete checkpoint for {}".format(key))
                 remaining = args.max_iterations-iteration
                 output = run_dir if checkpoint is None and not run_dir.exists() else unused_directory(
                     run_dir / ("resume_{}_to_{}".format(iteration, args.max_iterations) if checkpoint else "restart"))

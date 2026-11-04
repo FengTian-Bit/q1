@@ -24,7 +24,7 @@ LOCAL = "wheel_legged_gym/envs/q1_tcn/"
 SCOPE = dict(NS, F=F, Normal=Normal, Path=Path, csv=csv, json=json,
              gymapi=SimpleNamespace(ENV_SPACE=0), argparse=argparse, random=random,
              deepcopy=copy.deepcopy, copy=copy, sys=sys)
-for filename in ("q1_tcn_config.py", "labels.py", "actor_critic.py", "ppo.py", "q1_tcn.py",
+for filename in ("q1_tcn_config.py", "labels.py", "parking.py", "actor_critic.py", "ppo.py", "q1_tcn.py",
                  "metrics.py", "runner.py", "cli.py", "evaluate.py"):
     # Avoid the evaluate.py __main__ entry and imports of unavailable Isaac Gym.
     SCOPE["__name__"] = "q1_tcn_cpu_tests"
@@ -234,6 +234,24 @@ class TCNNumericalTests(unittest.TestCase):
         cfg, train = SCOPE["scenario_config"](saved, "low_friction", 101, 8, 12)
         self.assertEqual(cfg.terrain.static_friction, 0.2)
         self.assertEqual(Config().terrain.static_friction, 0.8)
+
+    def test_external_evaluation_initializes_height_before_reset_history(self):
+        env = tensor_env()
+        env.commands.zero_()  # same initial commands as a freshly constructed task
+        env.external_commands = True
+        env.evaluation_mode = True
+        env._resample_commands(torch.arange(env.num_envs))
+        self.assertEqual(float(env.commands[:, 2].sum()), 0)
+        SCOPE["set_evaluation_commands"](env, 0.0)
+        env.reset_idx(torch.arange(env.num_envs))
+        env.compute_observations()
+        expected = torch.full((env.num_envs,), 0.397)
+        torch.testing.assert_close(env.commands[:, 2], expected)
+        torch.testing.assert_close(env.obs_buf[:, 8], expected*env.commands_scale[2])
+        history = env.obs_history.reshape(env.num_envs, 16, 27)
+        torch.testing.assert_close(history[:, :, 8], (expected*env.commands_scale[2])[:, None].expand(-1, 16))
+        SCOPE["set_evaluation_commands"](env, -0.25)
+        torch.testing.assert_close(env.commands[:, 2], expected)
 
     def test_cli_list_options_and_comparison(self):
         parser = SCOPE["task_parser"](evaluation=True)

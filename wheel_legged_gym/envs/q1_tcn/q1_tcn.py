@@ -6,6 +6,7 @@ from isaacgym import gymapi, gymtorch
 
 from wheel_legged_gym.envs.q1_flat.q1_flat import Q1Flat
 from .labels import flat_wheel_slip, update_contact
+from .parking import ParkingState
 
 
 class Q1TCN(Q1Flat):
@@ -40,6 +41,46 @@ class Q1TCN(Q1Flat):
         self.external_commands = False
         self.transition_metrics = {}
         self.terminal_critic_obs = torch.zeros(self.num_envs, self.num_privileged_obs, device=self.device)
+        self.parking = ParkingState(self.num_envs, self.device)
+        self.raw_action_clipping = torch.zeros(self.num_envs, device=self.device)
+        self.reward_terms = {}
+
+    def step(self, actions):
+        self.raw_action_clipping = (actions.to(self.device).abs() > self.cfg.normalization.clip_actions).float().mean(-1)
+        return super().step(actions)
+
+    def compute_reward(self):
+        """Same dt scaling/clipping as LeggedRobot, with per-term logging."""
+        self.rew_buf.zero_()
+        self.reward_terms = {}
+        limit = self.cfg.rewards.clip_single_reward*self.dt
+        for name, function in zip(self.reward_names, self.reward_functions):
+            term = (function()*self.reward_scales[name]).clamp(-limit, limit)
+            self.reward_terms[name] = term
+            self.rew_buf += term
+            self.episode_sums[name] += term
+        if self.cfg.rewards.only_positive_rewards:
+            self.rew_buf.clamp_min_(0)
+        if "termination" in self.reward_scales:
+            term = self._reward_termination()*self.reward_scales["termination"]
+            self.reward_terms["termination"] = term
+            self.rew_buf += term
+            self.episode_sums["termination"] += term
+
+    def _reward_tracking_ang_vel(self):
+        error = (self.commands[:, 1]-self.base_ang_vel[:, 2]).square()
+        cfg = self.cfg.rewards
+        sigma = cfg.tracking_sigma if cfg.reward_version == 1 else cfg.yaw_tracking_sigma
+        return torch.exp(-error/sigma)
+
+    def _reward_parking_drift(self):
+        return self.parking.penalty(self.cfg.rewards)
+
+    def _reward_termination(self):
+        # Simultaneous timeout must not hide an actual fall in reward v2.
+        if self.cfg.rewards.reward_version >= 2:
+            return self.physical_failure.float()
+        return super()._reward_termination()
 
     def _resample_commands(self, env_ids):
         if not getattr(self, "external_commands", False):
@@ -98,6 +139,8 @@ class Q1TCN(Q1Flat):
             self.contact_forces[:, self.termination_contact_indices], dim=-1) > 5.0, dim=1)
         physical_failure |= self.projected_gravity[:, 2] > -math.cos(self.cfg.env.max_tilt_rad)
         physical_failure |= self.base_height < self.cfg.env.min_base_height
+        self.physical_failure = physical_failure
+        self.parking.update(self.root_states[:, :3], self.commands, self.dt, self.cfg.rewards)
         cfg = self.cfg.estimator
         force = self.contact_forces[:, self.feet_indices, 2].clamp_min(0)
         self.wheel_contact[:], self.contact_counter[:] = update_contact(
@@ -124,6 +167,10 @@ class Q1TCN(Q1Flat):
             "saturation": (self.torques.abs() >= 0.98*self.torque_limits).float().mean(-1),
             "failure": physical_failure,
             "targets": self.estimator_targets.clone(),
+            "parking_valid": (self.parking.stationary & self.parking.locked).clone(),
+            "parking_error": self.parking.error.clone(),
+            "braking_distance": self.parking.braking_distance.clone(),
+            "action_clipping": self.raw_action_clipping.clone(),
         }
         self.terminal_critic_obs[:] = self._critic_observations(self.compute_proprioception_observations())
 
@@ -136,3 +183,4 @@ class Q1TCN(Q1Flat):
             self.history_reset[env_ids] = True
             self.pulse_force[env_ids] = 0
             self.eval_force[env_ids] = 0
+            self.parking.reset(env_ids, self.root_states[:, :3])

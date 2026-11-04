@@ -41,6 +41,14 @@ class TrialMetrics:
         self.command_stable = np.zeros(count)
         self.command_settling_sum = np.zeros(count)
         self.trace = []
+        self.parking_steps = np.zeros(count)
+        self.parking_sq = np.zeros(count)
+        self.parking_max = np.zeros(count)
+        self.parking_end = np.zeros(count)
+        self.braking_max = np.zeros(count)
+        self.clipping_sum = np.zeros(count)
+        self.zero_steps = np.zeros(count)
+        self.zero_speed_sq = np.zeros(count)
 
     def update_estimates(self, estimates, targets):
         valid = self.active & (targets[:, 7] > 0.5)
@@ -74,6 +82,18 @@ class TrialMetrics:
     def update(self, time_s, sample):
         active = self.active.copy()
         self.steps += active
+        parking_valid = active & sample.get("parking_valid", np.zeros(self.count, dtype=bool))
+        parking_error = sample.get("parking_error", np.zeros(self.count))
+        self.parking_steps += parking_valid
+        self.parking_sq += parking_error**2*parking_valid
+        self.parking_max = np.maximum(self.parking_max, parking_error*parking_valid)
+        self.parking_end[parking_valid] = parking_error[parking_valid]
+        self.braking_max = np.maximum(self.braking_max, sample.get("braking_distance", np.zeros(self.count))*active)
+        clipping = sample.get("action_clipping", np.zeros(self.count))
+        self.clipping_sum += clipping*active
+        zero = active & (np.abs(sample["command"]) < 0.02)
+        self.zero_steps += zero
+        self.zero_speed_sq += sample["velocity"][:, 0]**2*zero
         error = sample["velocity"][:, 0]-sample["command"]
         changed = active & (np.abs(sample["command"]-self.previous_command) > 1e-6)
         self.command_events += changed
@@ -122,6 +142,8 @@ class TrialMetrics:
             slip_abs_m_s=float(np.abs(sample["slip"])[support].mean()) if support.any() else np.nan,
             support_fraction=float(support[active].mean()) if active.any() else np.nan,
             force_n=mean(sample["force"].sum(-1))))
+        self.trace[-1]["parking_error_m"] = float(parking_error[parking_valid].mean()) if parking_valid.any() else np.nan
+        self.trace[-1]["action_clipping_fraction"] = mean(clipping)
         self.failed |= active & sample["failure"]
         self.active &= ~sample["failure"]
 
@@ -134,6 +156,13 @@ class TrialMetrics:
             roll_rms_rad=np.sqrt(divide(s["roll_sq"], self.steps)),
             max_pitch_rad=self.max_pitch, max_roll_rad=self.max_roll,
             end_displacement_m=self.end_drift, max_displacement_m=self.max_drift,
+            locked_parking_rms_m=np.sqrt(divide(self.parking_sq, self.parking_steps)),
+            locked_parking_max_m=np.where(self.parking_steps > 0, self.parking_max, np.nan),
+            locked_parking_end_m=np.where(self.parking_steps > 0, self.parking_end, np.nan),
+            locked_parking_observed_s=self.parking_steps*self.dt,
+            braking_displacement_max_m=self.braking_max,
+            zero_command_speed_rmse_m_s=np.sqrt(divide(self.zero_speed_sq, self.zero_steps)),
+            action_clipping_fraction=divide(self.clipping_sum, self.steps),
             contact_slip_mae_m_s=divide(s["slip_abs"], s["support_count"]),
             supported_high_slip_fraction=divide(s["high_slip"], s["support_count"]),
             abnormal_spin_s=s["abnormal_spin"],

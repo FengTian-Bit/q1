@@ -36,6 +36,37 @@ class Q1TCNCfg(Q1FlatCfg):
     class noise(Q1FlatCfg.noise):
         add_noise = True
 
+    class rewards(Q1FlatCfg.rewards):
+        reward_version = 2
+        tracking_sigma = 0.01
+        yaw_tracking_sigma = 0.04
+        parking_speed_threshold = 0.02
+        parking_yaw_threshold = 0.05
+        parking_brake_s = 0.5
+        parking_ramp_s = 0.5
+        parking_deadband_m = 0.02
+        parking_scale_m = 0.10
+
+        class scales(Q1FlatCfg.rewards.scales):
+            alive = 0.0
+            nominal_state = 0.0
+            dof_vel = 0.0
+            dof_acc = 0.0
+            action_smooth = 0.0
+            tracking_lin_vel = 3.0
+            tracking_ang_vel = 0.3
+            parking_drift = -2.0
+            orientation = -2.0
+            base_height = 0.5
+            lateral_velocity = -0.5
+            lin_vel_z = -0.2
+            ang_vel_xy = -0.05
+            action_rate = -0.01
+            torques = -0.0001
+            collision = -1.0
+            dof_pos_limits = -2.0
+            termination = -200.0  # multiplied by dt: -2 per failure at 100 Hz
+
     class estimator:
         contact_on_force = 5.0  # N, world Z on the flat plane
         contact_off_force = 3.0
@@ -80,7 +111,7 @@ class Q1TCNCfgPPO(BaseConfig):
         num_steps_per_env = 48
         max_iterations = 3000
         save_interval = 100
-        experiment_name = "q1_tcn"
+        experiment_name = "q1_tcn_reward_v2"
 
 
 def validate_config(env_cfg, train_cfg):
@@ -99,3 +130,6 @@ def validate_config(env_cfg, train_cfg):
     pulse = env_cfg.domain_rand
     if not 0 < pulse.push_duration_s < pulse.push_interval_s:
         raise ValueError("push duration must be positive and less than interval")
+    rewards = env_cfg.rewards
+    if rewards.parking_brake_s < 0 or rewards.parking_ramp_s <= 0 or rewards.parking_scale_m <= 0:
+        raise ValueError("Parking timing and distance scales must be valid")

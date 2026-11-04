@@ -31,8 +31,27 @@ def command_at(time_s, scenario):
     return 0.0 if time_s < 2 else 0.25 if time_s < 5 else 0.0 if time_s < 7 else -0.25 if time_s < 10 else 0.0
 
 
+def evaluation_height(cfg):
+    height = float(cfg.rewards.base_height_target)
+    lower, upper = cfg.commands.ranges.height
+    if not np.isfinite(height) or not lower <= height <= upper or height <= 0:
+        raise ValueError("Evaluation base_height_target must be positive and inside the trained height command range")
+    return height
+
+
+def set_evaluation_commands(env, forward_speed):
+    """Set all three commands, including height, before reset fills history."""
+    env.commands[:, 0] = forward_speed
+    env.commands[:, 1] = 0.0
+    env.commands[:, 2] = evaluation_height(env.cfg)
+
+
 def scenario_config(saved, scenario, seed, num_envs, duration):
     cfg, train_cfg = Q1TCNCfg(), Q1TCNCfgPPO()
+    # Old checkpoints retain their original reward, despite newer class defaults.
+    cfg.rewards.reward_version = saved["env"]["rewards"].get("reward_version", 1)
+    if cfg.rewards.reward_version == 1:
+        cfg.rewards.scales.parking_drift = 0.0
     restore_config(cfg, saved["env"])
     restore_config(train_cfg, saved["train"])
     cfg.seed, cfg.env.num_envs = seed, num_envs
@@ -63,7 +82,7 @@ def plot_trace(path, traces, title):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    fig, axes = plt.subplots(3, 2, figsize=(12, 9), sharex=True)
+    fig, axes = plt.subplots(4, 2, figsize=(12, 11), sharex=True)
     for seed, rows in traces:
         t = np.array([row["time_s"] for row in rows])
         value = lambda name: np.array([row[name] for row in rows])
@@ -75,12 +94,15 @@ def plot_trace(path, traces, title):
         axes[1, 1].plot(t, value("slip_abs_m_s"))
         axes[2, 0].plot(t, value("force_n"))
         axes[2, 1].plot(t, value("alive_count"))
+        axes[3, 0].plot(t, value("parking_error_m"))
+        axes[3, 1].plot(t, value("action_clipping_fraction"))
     if traces:
         rows = traces[0][1]
         axes[0, 0].plot([row["time_s"] for row in rows], [row["command_m_s"] for row in rows],
                        "k--", label="command")
     for axis, ylabel in zip(axes.flat, ("vx [m/s]", "pitch [rad]", "roll [rad]",
-                                        "supported slip [m/s]", "wheel Fz total [N]", "observed trials")):
+                                        "supported slip [m/s]", "wheel Fz total [N]", "observed trials",
+                                        "locked parking error [m]", "action clipping fraction")):
         axis.set_ylabel(ylabel)
         axis.grid(alpha=0.3)
         axis.set_xlabel("time [s]")
@@ -118,15 +140,14 @@ def main():
                 model.load_state_dict(checkpoint["model_state_dict"])
                 model.eval()
                 env.evaluation_mode, env.external_commands = True, True
-                env.commands[:, :2] = 0
+                set_evaluation_commands(env, 0.0)
                 env.reset()
                 push_end = 3.15 if scenario.startswith("push_") else None
                 metrics = TrialMetrics(num_envs, env.dt, env.root_states[:, :3].cpu().numpy(),
                                        model.enabled, push_end)
                 for step in range(round(args.duration/env.dt)):
                     time_s = step*env.dt
-                    env.commands[:, 0] = command_at(time_s, scenario)
-                    env.commands[:, 1] = 0
+                    set_evaluation_commands(env, command_at(time_s, scenario))
                     # Rebuild only the current command slots; do not shift history twice.
                     command_obs = env.commands[:, :3]*env.commands_scale
                     env.obs_buf[:, 6:9] = command_obs
@@ -165,7 +186,11 @@ def main():
         training_protocol=dict(env=saved["env"], policy=saved["train"]["policy"],
                                algorithm=saved["train"]["algorithm"],
                                rollout_steps=saved["train"]["runner"]["num_steps_per_env"]),
-        evaluation=dict(seeds=args.eval_seeds, num_envs=num_envs, duration_s=args.duration,
+        evaluation=dict(protocol_version=3, command_height_m=evaluation_height(cfg),
+            reward_version=cfg.rewards.reward_version,
+            parking_brake_s=cfg.rewards.parking_brake_s, parking_ramp_s=cfg.rewards.parking_ramp_s,
+            parking_deadband_m=cfg.rewards.parking_deadband_m, parking_scale_m=cfg.rewards.parking_scale_m,
+            seeds=args.eval_seeds, num_envs=num_envs, duration_s=args.duration,
             pulse_force_n=args.push_force, pulse_start_s=3.0, pulse_duration_s=0.15,
             nominal_friction=0.8, low_friction=0.2, payload_added_mass_kg=0.75, payload_com_offset_x_m=0.02,
             recovery_speed_band_m_s=0.05, recovery_tilt_band_rad=0.12,
