@@ -5,13 +5,147 @@ import math
 from pathlib import Path
 import tempfile
 import unittest
+from types import SimpleNamespace
 import numpy as np
 import torch
 
 from test_q1_tcn import SCOPE, Config, TrainConfig, tensor_env
+from test_q1_flat import make_env, load_code
 
 
 class RewardTests(unittest.TestCase):
+    def test_curriculum_keeps_tensor_range_and_real_command_sampler(self):
+        scope=dict(SCOPE)
+        scope['__name__']='reward_iteration_tests'
+        load_code('tools/q1_reward_iteration.py',scope)
+        env=tensor_env(32)
+        env.cfg.commands.stand_probability=0
+        original=env.command_ranges['lin_vel_x']
+        saved=dict(env=SCOPE['config_dict'](env.cfg))
+        original_rewards=copy.deepcopy(saved['env']['rewards'])
+        for limit in [.35,.4,.6]:
+            scope['apply_speed_limit'](env,saved,limit)
+            self.assertIs(env.command_ranges['lin_vel_x'],original)
+            self.assertEqual(original.shape,(32,2))
+            env._resample_commands(torch.arange(32))
+            self.assertLessEqual(float(env.commands[:,0].abs().max()),limit)
+            self.assertEqual(saved['env']['commands']['ranges']['lin_vel_x'],[-limit,limit])
+        self.assertEqual(saved['env']['rewards'],original_rewards)
+
+    def test_speed_curriculum_requires_ordered_complete_target_and_budget(self):
+        scope=dict(SCOPE)
+        scope['__name__']='reward_iteration_tests'
+        load_code('tools/q1_reward_iteration.py',scope)
+        validate=scope['speed_curriculum']
+        schedule={'speed_curriculum':[[0,.35],[200,.4],[400,.45],[600,.5],[800,.55],[1000,.6]]}
+        self.assertEqual(validate(schedule,[-.6,.6],1500)[-1],(1000,.6))
+        self.assertEqual(validate({},[-.6,.6],1500),[])
+        for stages in [[[1,.35],[200,.6]],[[0,.35],[1000,.6]],
+                       [[0,.35],[200,.7]],[[0,.35],[200,.5]],[[0,.4],[200,.35],[400,.6]]]:
+            with self.assertRaises(ValueError):
+                validate({'speed_curriculum':stages},[-.6,.6],1000)
+
+    def test_speed_extension_preserves_frozen_settings_and_cli_budget(self):
+        scope=dict(SCOPE)
+        scope['__name__']='reward_iteration_tests'
+        load_code('tools/q1_reward_iteration.py',scope)
+        cfg,ppo=Config(),TrainConfig()
+        ppo.ablation='A0'
+        cfg.odometry.enabled=True
+        cfg.rewards.scales.orientation=-20
+        ppo.policy.mean_limit=.95
+        SCOPE['validate_config'](cfg,ppo)
+        saved=dict(env=SCOPE['config_dict'](cfg),train=SCOPE['config_dict'](ppo))
+        scope['load_checkpoint']=lambda _:dict(config=copy.deepcopy(saved))
+        with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[1]) as folder:
+            path=Path(folder)/'speed.json'
+            path.write_text('{"env":{"commands":{"ranges":{"lin_vel_x":[-0.6,0.6]}}}}')
+            args=SimpleNamespace(inherit_checkpoint_config=True,warm_start='frozen.pt',
+                spec=path,num_envs=512,seed=7,max_iterations=1500)
+            new_cfg,new_ppo,_=scope['training_config'](args)
+        expected=copy.deepcopy(saved)
+        expected['env']['commands']['ranges']['lin_vel_x']=[-.6,.6]
+        expected['env']['env']['num_envs']=512
+        expected['env']['seed']=expected['train']['seed']=7
+        expected['train']['runner']['max_iterations']=1500
+        expected['train']['runner']['save_interval']=100
+        self.assertEqual(SCOPE['config_dict'](new_cfg),expected['env'])
+        self.assertEqual(SCOPE['config_dict'](new_ppo),expected['train'])
+        self.assertEqual(saved['env']['commands']['ranges']['lin_vel_x'],[-.3,.3])
+
+    def test_a0_does_not_run_velocity_estimator(self):
+        model=SCOPE['ActorCriticTCN'](27,143,6,ablation='A0')
+        def forbidden(*args):
+            raise AssertionError('A0 must not invoke the velocity head')
+        model.velocity_head.forward=forbidden
+        action, estimates=model.act_inference(torch.zeros(2,27),torch.zeros(2,432))
+        self.assertEqual(action.shape,(2,6))
+        self.assertEqual(float(estimates['velocity'].abs().sum()),0)
+
+    def test_odometry_layout_and_no_true_pose_or_velocity_input(self):
+        cfg=Config()
+        cfg.odometry.enabled=True
+        cfg.noise.add_noise=False
+        cfg.init_state.reset_lin_vel=0
+        cfg.init_state.reset_ang_vel=0
+        SCOPE['validate_config'](cfg,TrainConfig())
+        env=make_env(4,task_class=SCOPE['Q1TCN'],cfg_class=lambda:cfg)
+        env.commands[:, :2]=0
+        env.base_ang_vel.zero_()
+        env.check_termination();env.compute_observations()
+        self.assertEqual(env.obs_buf.shape,(4,30))
+        self.assertEqual(env.privileged_obs_buf.shape,(4,146))
+        env.dof_pos[:,env.wheel_dof_indices]+=.1
+        env.check_termination();env.compute_observations()
+        self.assertTrue((env.obs_buf[:,27]>.1).all())
+        original=env.obs_buf.clone()
+        env.root_states[:,0]+=10
+        env.base_lin_vel[:,0]=123
+        env.check_termination();env.compute_observations()
+        torch.testing.assert_close(env.obs_buf,original,atol=1e-5,rtol=0)
+        env.reset_idx(torch.tensor([0]))
+        env.compute_observations()
+        self.assertEqual(float(env.obs_buf[0,27:].abs().sum()),0)
+
+    def test_odometry_warm_start_preserves_actions_and_values(self):
+        scope=dict(SCOPE)
+        scope['__name__']='reward_iteration_tests'
+        load_code('tools/q1_reward_iteration.py',scope)
+        old=SCOPE['ActorCriticTCN'](27,143,6,ablation='A0',mean_limit=.95)
+        new=SCOPE['ActorCriticTCN'](30,146,6,ablation='A0',mean_limit=.95)
+        scope['load_checkpoint']=lambda _:dict(model_state_dict=old.state_dict())
+        scope['warm_start_weights'](new,None)
+        obs=torch.randn(4,27)
+        history=torch.randn(4,16,27)
+        critic=torch.randn(4,143)
+        extended=torch.cat((obs,torch.randn(4,3)),dim=-1)
+        extended_history=torch.cat((history,torch.randn(4,16,3)),dim=-1)
+        extended_critic=torch.cat((critic[:,:30],torch.randn(4,3),critic[:,30:]),dim=-1)
+        torch.testing.assert_close(old.act_inference(obs,history)[0],
+                                   new.act_inference(extended,extended_history)[0])
+        torch.testing.assert_close(old.evaluate(critic),new.evaluate(extended_critic))
+
+    def test_optional_policy_bounds_and_fixed_noise(self):
+        model = SCOPE['ActorCriticTCN'](27,143,6,init_noise_std=.2,max_noise_std=.3,
+                                      mean_limit=.95,learn_noise=False)
+        model.log_std.data.fill_(100)
+        model.constrain_distribution_parameters()
+        distribution,_=model.distribution(torch.randn(4,27),torch.randn(4,432))
+        self.assertLessEqual(float(distribution.mean.detach().abs().max()),.95)
+        self.assertLessEqual(float(distribution.stddev.detach().max()),.300001)
+        self.assertFalse(model.log_std.requires_grad)
+
+    def test_optional_parking_velocity_is_gated_and_has_deadband(self):
+        env=tensor_env()
+        env.base_lin_vel.zero_()
+        env.base_lin_vel[:,0]=.011
+        env.parking.weight.zero_()
+        self.assertEqual(float(env._reward_parking_velocity().sum()),0)
+        env.parking.weight.fill_(1)
+        torch.testing.assert_close(env._reward_parking_velocity(),torch.full((4,),.5))
+        env.base_lin_vel[:,0]=.0005
+        self.assertEqual(float(env._reward_parking_velocity().sum()),0)
+
     def test_reward_weights_and_disabled_terms(self):
         env = tensor_env()
         expected = dict(tracking_lin_vel=3, tracking_ang_vel=.3, parking_drift=-2,

@@ -40,6 +40,9 @@ import torch
 
 
 def train(args):
+    if args.task == "q1_tcn":
+        from wheel_legged_gym.envs.q1_tcn.task import train_task
+        return train_task(args)
     if args.task == "q1":
         from wheel_legged_gym.envs.q1.t0_run_config import prepare_q1_t0_training
         from wheel_legged_gym.utils.helpers import get_load_path

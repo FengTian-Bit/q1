@@ -24,7 +24,7 @@ LOCAL = "wheel_legged_gym/envs/q1_tcn/"
 SCOPE = dict(NS, F=F, Normal=Normal, Path=Path, csv=csv, json=json,
              gymapi=SimpleNamespace(ENV_SPACE=0), argparse=argparse, random=random,
              deepcopy=copy.deepcopy, copy=copy, sys=sys)
-for filename in ("q1_tcn_config.py", "labels.py", "parking.py", "actor_critic.py", "ppo.py", "q1_tcn.py",
+for filename in ("q1_tcn_config.py", "labels.py", "parking.py", "odometry.py", "curriculum.py", "command_reference.py", "actor_critic.py", "symmetry.py", "ppo.py", "q1_tcn.py",
                  "metrics.py", "runner.py", "cli.py", "evaluate.py"):
     # Avoid the evaluate.py __main__ entry and imports of unavailable Isaac Gym.
     SCOPE["__name__"] = "q1_tcn_cpu_tests"

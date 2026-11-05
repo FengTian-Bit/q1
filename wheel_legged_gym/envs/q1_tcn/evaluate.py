@@ -39,11 +39,10 @@ def evaluation_height(cfg):
     return height
 
 
-def set_evaluation_commands(env, forward_speed):
+def set_evaluation_commands(env, forward_speed, yaw_rate=0.0):
     """Set all three commands, including height, before reset fills history."""
-    env.commands[:, 0] = forward_speed
-    env.commands[:, 1] = 0.0
     env.commands[:, 2] = evaluation_height(env.cfg)
+    env.set_command_targets(forward_speed, yaw_rate)
 
 
 def scenario_config(saved, scenario, seed, num_envs, duration):
@@ -57,6 +56,7 @@ def scenario_config(saved, scenario, seed, num_envs, duration):
     cfg.seed, cfg.env.num_envs = seed, num_envs
     cfg.env.episode_length_s = duration + 2.0  # evaluation horizon never triggers a reset
     cfg.commands.resampling_time = duration + 10.0
+    cfg.commands.sequence_fraction = 0.0  # evaluation commands always come from its protocol
     cfg.domain_rand.randomize_friction = False
     cfg.domain_rand.randomize_base_mass = False
     cfg.domain_rand.randomize_base_com = False
