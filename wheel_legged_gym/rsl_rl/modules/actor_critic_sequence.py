@@ -53,6 +53,7 @@ class ActorCriticSequence(nn.Module):
         activation="elu",
         orthogonal_init=False,
         init_noise_std=1.0,
+        velocity_estimation_enabled=True,
         **kwargs,
     ):
         if kwargs:
@@ -64,6 +65,7 @@ class ActorCriticSequence(nn.Module):
 
         self.orthogonal_init = orthogonal_init
         self.latent_dim = latent_dim
+        self.velocity_estimation_enabled = velocity_estimation_enabled
 
         activation = get_activation(activation)
 
@@ -179,7 +181,7 @@ class ActorCriticSequence(nn.Module):
         return self.distribution.entropy().sum(dim=-1)
 
     def update_distribution(self, observations, observation_history):
-        self.latent = self.encoder(observation_history)
+        self.latent = self.encode(observation_history)
         mean = self.actor(torch.cat((observations, self.latent.detach()), dim=-1))
         self.distribution = Normal(mean, mean*0. + self.std)
 
@@ -194,7 +196,7 @@ class ActorCriticSequence(nn.Module):
         return self.latent
 
     def act_inference(self, observations, observation_history):
-        self.latent = self.encoder(observation_history)
+        self.latent = self.encode(observation_history)
         actions_mean = self.actor(torch.cat((observations, self.latent), dim=-1))
         return actions_mean, self.latent
 
@@ -203,6 +205,8 @@ class ActorCriticSequence(nn.Module):
         return value
 
     def encode(self, observation_history, **kwargs):
+        if not self.velocity_estimation_enabled:
+            return observation_history.new_zeros((observation_history.shape[0], self.latent_dim))
         latent = self.encoder(observation_history)
         return latent
 

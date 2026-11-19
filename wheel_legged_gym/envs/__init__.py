@@ -84,3 +84,9 @@ from .q1.q1_t0 import Q1T0CTBC
 from .q1.q1_t0_config import Q1T0Cfg, Q1T0CfgPPO
 
 task_registry.register("q1", Q1T0CTBC, Q1T0Cfg(), Q1T0CfgPPO())
+
+from .q1_tcn.q1_tcn import Q1TCN
+from .q1_tcn.q1_tcn_config import Q1TCNCfg, Q1TCNCfgPPO
+from .q1_tcn.task_config import Q1TCNTaskCfg, Q1TCNTaskCfgPPO
+
+task_registry.register("q1_tcn", Q1TCN, Q1TCNTaskCfg(), Q1TCNTaskCfgPPO())

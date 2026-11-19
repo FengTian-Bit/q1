@@ -45,7 +45,8 @@ class Q1T0Terrain(Terrain):
     """Gym-compatible terrain with centre origins and per-tile teacher metadata."""
 
     TYPE_LABELS = {"flat": -1, "slope_down": 0, "slope_up": 0,
-                   "rough_slope": 1, "stairs_down": 2, "stairs_up": 3,
+                   "rough_slope": 1, "rough_slope_down": 1, "rough_slope_up": 1,
+                   "stairs_down": 2, "stairs_up": 3,
                    "discrete": 4}
 
     def __init__(self, cfg, num_robots):
@@ -139,12 +140,13 @@ class Q1T0Terrain(Terrain):
         terrain.terrain_type = self.TYPE_LABELS[name]
         terrain.difficulty = difficulty
         terrain.riser_height, terrain.tread_width, terrain.step_count = 0.0, 0.0, 0
-        if name in ("slope_down", "slope_up", "rough_slope"):
-            slope = lerp(cfg.rough_slope_range if name == "rough_slope" else cfg.slope_range)
+        if name in ("slope_down", "slope_up", "rough_slope", "rough_slope_down", "rough_slope_up"):
+            rough = name.startswith("rough_slope")
+            slope = lerp(cfg.rough_slope_range if rough else cfg.slope_range)
             terrain_utils.pyramid_sloped_terrain(
-                terrain, slope=-slope if name == "slope_down" else slope,
+                terrain, slope=-slope if name.endswith("_down") else slope,
                 platform_size=cfg.platform_size)
-            if name == "rough_slope":
+            if rough:
                 terrain_utils.random_uniform_terrain(
                     terrain, min_height=cfg.rough_height_range[0],
                     max_height=cfg.rough_height_range[1], step=cfg.rough_height_step,
@@ -152,12 +154,15 @@ class Q1T0Terrain(Terrain):
         elif name in ("stairs_down", "stairs_up"):
             height = lerp(cfg.stair_height_range)
             width_cells = int(cfg.stair_width / cfg.horizontal_scale)
-            height_units = int(height / cfg.vertical_scale)
+            # Avoid losing a full 5 mm cell when a grid-aligned endpoint such
+            # as 0.22 is represented as 0.21999999999999997 after interpolation.
+            height_units = int(np.floor(height / cfg.vertical_scale + 1e-9))
             if width_cells < 1 or height_units < 1:
                 raise ValueError("T0 stair width and height must cover at least one grid cell")
             terrain_utils.pyramid_stairs_terrain(
                 terrain, step_width=cfg.stair_width,
-                step_height=-height if name == "stairs_down" else height,
+                step_height=(-1 if name == "stairs_down" else 1)
+                * np.nextafter(height_units * cfg.vertical_scale, np.inf),
                 platform_size=cfg.platform_size)
             terrain.riser_height = height_units * cfg.vertical_scale
             terrain.tread_width = width_cells * cfg.horizontal_scale

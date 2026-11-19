@@ -53,7 +53,8 @@ class PPO:
             lr=learning_rate,
         )
         self.extra_optimizer = None
-        if self.actor_critic.is_sequence:
+        if (self.actor_critic.is_sequence
+                and getattr(self.actor_critic, "velocity_estimation_enabled", True)):
             self.extra_optimizer = optim.Adam(
                 [
                     {"params": self.actor_critic.encoder.parameters()},

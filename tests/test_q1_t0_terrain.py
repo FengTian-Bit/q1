@@ -126,6 +126,16 @@ class Q1T0TerrainTests(unittest.TestCase):
         self.assertTrue(all(args["min_size"] == 1 and args["max_size"] == 2
                             and args["count"] == 20 for args in discrete))
 
+    def test_both_rough_slope_directions_have_noise_and_no_stair_metadata(self):
+        terrain, tools = build(config(num_rows=2, num_cols=2, border_size=0.0,
+                                     terrain_names=["rough_slope_down", "rough_slope_up"],
+                                     terrain_labels=[1, 1], terrain_proportions=[.5, .5]))
+        slopes = [args["slope"] for kind, _, args in tools.calls if kind == "slope"]
+        np.testing.assert_allclose(slopes, [-.1, -.48, .1, .48])
+        self.assertEqual(sum(kind == "roughness" for kind, _, _ in tools.calls), 4)
+        self.assertTrue((terrain.step_counts == 0).all())
+        self.assertTrue((terrain.terrain_classes == 1).all())
+
     def test_centre_spawn_stair_signs_quantization_and_sideways_faces(self):
         terrain, _ = build(config(num_rows=2, border_size=0.0))
         for col, sign in ((9, -1), (13, 1)):

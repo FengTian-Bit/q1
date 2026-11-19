@@ -10,6 +10,7 @@ from .q1 import Q1
 from .t0_terrain import Q1T0Terrain
 from .t0_curriculum import terrain_levels
 from .t0_commands import resample_commands, compute_commands
+from wheel_legged_gym.envs.q1_tcn.parking import ParkingState
 
 
 class Q1T0CTBC(Q1CTBC):
@@ -58,6 +59,7 @@ class Q1T0CTBC(Q1CTBC):
 
     def _init_buffers(self):
         super()._init_buffers()
+        self.v5_parking = ParkingState(self.num_envs, self.device)
         self.command_headings = torch.zeros(self.num_envs, device=self.device)
         self._t0_reset_commands = None
 
@@ -65,6 +67,10 @@ class Q1T0CTBC(Q1CTBC):
         resample_commands(self, env_ids)
 
     def step(self, actions):
+        # Gate the teacher by the assigned terrain tile, including any stale
+        # swing state left when the curriculum switches terrain at reset.
+        stairs = self.ctbc_step_counts > 0
+        self.guidance.reset((~stairs).nonzero(as_tuple=False).flatten())
         raw = torch.maximum(torch.minimum(actions.to(self.device), self.ctbc_action_clip),
                             -self.ctbc_action_clip)
         self.ctbc_raw_actions[:] = raw
@@ -75,7 +81,7 @@ class Q1T0CTBC(Q1CTBC):
                       | (self.commands[:, 1].abs() > self.cfg.commands.yaw_idle_threshold))
             self.guidance.update(force[..., :2].norm(dim=-1),
                                  force[..., 2] > self.cfg.rewards.support_force,
-                                 bottom, moving)
+                                 bottom, moving & stairs)
         self.ctbc_reference[:] = self.guidance.reference_offsets()
         composite = raw.clone()
         composite[:, [0, 1, 3, 4]] += (self.ctbc_feedforward_weight*self.ctbc_reference
@@ -112,6 +118,48 @@ class Q1T0CTBC(Q1CTBC):
         # Retain Q1 physical failure and timeout tests, without CTBC's fixed
         # goal, +X-only progress, lateral corridor or backwards escape limits.
         Q1.check_termination(self)
+        if self.cfg.rewards.reward_version == 5:
+            self.v5_parking.update(self.root_states[:, :2], self.commands,
+                                   self.dt, self.cfg.rewards)
+
+    def _tracking_sigma(self):
+        cfg = self.cfg.rewards
+        stationary = self.commands[:, 0].abs() < cfg.parking_speed_threshold
+        return torch.where(stationary, cfg.idle_tracking_sigma, cfg.tracking_sigma)
+
+    def _reward_tracking_lin_vel(self):
+        if self.cfg.rewards.reward_version != 5:
+            return super()._reward_tracking_lin_vel()
+        return torch.exp(-(self.commands[:, 0]-self.base_lin_vel[:, 0]).square()
+                         / self._tracking_sigma())
+
+    def _reward_tracking_ang_vel(self):
+        if self.cfg.rewards.reward_version != 5:
+            return super()._reward_tracking_ang_vel()
+        return torch.exp(-(self.commands[:, 1]-self.base_ang_vel[:, 2]).square()
+                         / self._tracking_sigma())
+
+    def _reward_base_height(self):
+        if self.cfg.rewards.reward_version != 5:
+            return super()._reward_base_height()
+        return torch.exp(-(self.base_height-self.commands[:, 2]).square()
+                         / self.cfg.rewards.height_sigma)
+
+    def _reward_parking_drift(self):
+        if self.cfg.rewards.reward_version != 5:
+            return super()._reward_parking_drift()
+        return self.v5_parking.penalty(self.cfg.rewards)
+
+    def _reward_parking_velocity(self):
+        cfg = self.cfg.rewards
+        speed = self.base_lin_vel[:, :2].norm(dim=-1)
+        error = (speed-cfg.parking_velocity_deadband).clamp_min(0)/cfg.parking_velocity_scale
+        return self.v5_parking.weight*error.clamp(max=4)
+
+    def _reward_termination(self):
+        if self.cfg.rewards.reward_version != 5:
+            return super()._reward_termination()
+        return self.physical_failure.float()
 
     def _update_terrain_curriculum(self, env_ids):
         # Q1.reset_idx clears commands before the base invokes this hook. T0's
@@ -151,6 +199,7 @@ class Q1T0CTBC(Q1CTBC):
             Q1.reset_idx(self, env_ids)
         finally:
             self._t0_reset_commands = None
+        self.v5_parking.reset(env_ids, self.root_states[:, :3])
         for field in (self.ctbc_reference, self.ctbc_success, self.ctbc_out_of_bounds,
                       self.ctbc_goal_dwell, self.ctbc_progress, self.ctbc_trigger_count,
                       self.ctbc_swing_timeouts):

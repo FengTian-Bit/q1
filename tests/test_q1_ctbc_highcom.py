@@ -150,7 +150,7 @@ class Q1CTBCHighCOMTests(unittest.TestCase):
         self.assertEqual(env.cfg.control.leg_action_limits, [.8, 1.55, .8, 1.55])
         self.assertTrue((env.torques.abs() <= env.torque_limits).all())
         torch.testing.assert_close(env.torque_limits[env.policy_dof_indices],
-                                   torch.tensor([14., 14., .8, 14., 14., .8]))
+                                   torch.tensor([17., 17., 6., 17., 17., 6.]))
         limits = env.dof_pos_limits[env.leg_dof_indices[:2]]
         self.assertTrue((env.position_target[:, env.leg_dof_indices[:2]] >= limits[:, 0]+.05).all())
 

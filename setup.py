@@ -7,6 +7,7 @@ setup(
     author="Hongxi Wang",
     license="BSD-3-Clause",
     packages=find_packages(),
+    package_data={"wheel_legged_gym.envs.q1_tcn": ["v3_config.json"]},
     author_email="wanghongxi2001@outlook.com",
     description="Isaac Gym environments for Wheel Legged Robots",
     install_requires=[
