@@ -49,6 +49,22 @@ class ParkingState:
         self.error *= (stationary & self.locked).float()
         self.stationary[:] = stationary
 
-    def penalty(self, cfg):
-        error = (self.error-cfg.parking_deadband_m).clamp_min(0)/cfg.parking_scale_m
-        return self.weight*error.square().clamp(max=1)
+    def penalty(self, cfg, quadratic=False):
+        error = (self.error-cfg.parking_deadband_m).clamp_min(0)
+        fine = (error/cfg.parking_scale_m).square()
+        delta = 0. if quadratic else float(getattr(cfg, 'parking_huber_delta_m', 0.))
+        if delta > 0:
+            fine = torch.where(error > delta,
+                               (2*delta*error-delta*delta)/(cfg.parking_scale_m**2), fine)
+        if getattr(cfg,'clip_constraint_rewards',True):
+            fine = fine.clamp(max=1)
+        if getattr(cfg,'reward_version',1)>=9:
+            settings=cfg.multi_scale_parking
+            coarse=(error/settings['position_scale_m']).square()
+            if delta > 0:
+                coarse = torch.where(error > delta,
+                                     (2*delta*error-delta*delta)/(settings['position_scale_m']**2), coarse)
+            if getattr(cfg,'clip_constraint_rewards',True):
+                coarse=coarse.clamp(max=1)
+            fine=settings['fine_weight']*fine+(1-settings['fine_weight'])*coarse
+        return self.weight*fine

@@ -30,6 +30,9 @@ class Q1Flat(LeggedRobot):
 
     def _init_buffers(self):
         super()._init_buffers()
+        scales = getattr(self.cfg.control, "leg_action_scales", None)
+        if scales is not None:
+            self._leg_action_scales = torch.tensor(list(scales), device=self.device)
         # Delay index includes zero (the current action), hence max_delay + 1.
         max_delay = int(math.ceil(
             self.cfg.domain_rand.delay_ms_range[1] / 1000.0 / self.sim_params.dt
@@ -63,12 +66,33 @@ class Q1Flat(LeggedRobot):
     def _compute_torques(self, actions):
         position_ref = torch.zeros_like(self.dof_pos)
         velocity_ref = torch.zeros_like(self.dof_vel)
-        position_ref[:, self.leg_dof_indices] = (
-            actions[:, [0, 1, 3, 4]] * self.cfg.control.pos_action_scale
-        )
+        scales = getattr(self.cfg.control, "leg_action_scales", None)
+        if scales is None:
+            position_ref[:, self.leg_dof_indices] = (
+                actions[:, [0, 1, 3, 4]] * self.cfg.control.pos_action_scale
+            )
+        else:
+            position_ref[:, self.leg_dof_indices] = actions[:, [0, 1, 3, 4]] * self._leg_action_scales
+            # Keep a physical margin so a wider knee never fights the URDF limit.
+            bounds = self.dof_pos_limits[self.leg_dof_indices]
+            margin = self.cfg.control.leg_target_margin
+            target = self.default_dof_pos[:, self.leg_dof_indices] + position_ref[:, self.leg_dof_indices]
+            target = torch.maximum(torch.minimum(target, bounds[:, 1] - margin), bounds[:, 0] + margin)
+            position_ref[:, self.leg_dof_indices] = target - self.default_dof_pos[:, self.leg_dof_indices]
         velocity_ref[:, self.wheel_dof_indices] = (
             actions[:, [2, 5]] * self.cfg.control.vel_action_scale
         )
+        if getattr(self.cfg.control, 'wheel_velocity_feedforward', False):
+            # Command vx/r plus the yaw-term differential keeps the wheels turning at
+            # the commanded speed on a riser; the policy only learns the residual.
+            offsets = getattr(self.cfg.asset, 'wheel_lateral_offsets', [0.0, 0.0])
+            offsets = torch.tensor(offsets, device=self.device, dtype=velocity_ref.dtype)
+            velocity_ref[:, self.wheel_dof_indices] += (
+                self.commands[:, 0:1]-self.commands[:, 1:2]*offsets
+            )/self.cfg.asset.wheel_radius
+            limits = self.dof_vel_limits[self.wheel_dof_indices]
+            velocity_ref[:, self.wheel_dof_indices] = velocity_ref[
+                :, self.wheel_dof_indices].clamp(-limits, limits)
         torque = self.p_gains * (
             position_ref + self.default_dof_pos - self.dof_pos
         ) + self.d_gains * (velocity_ref - self.dof_vel)
@@ -102,8 +126,10 @@ class Q1Flat(LeggedRobot):
 
     def _resample_commands(self, env_ids):
         super()._resample_commands(env_ids)
-        stand = torch.rand(len(env_ids), device=self.device) < self.cfg.commands.stand_probability
+        selection = torch.rand(len(env_ids), device=self.device)
+        stand = selection < self.cfg.commands.stand_probability
         self.commands[env_ids[stand], 0:2] = 0.0
+        return selection  # TCN may reuse this draw for explicit command types.
 
     def _reset_root_states(self, env_ids):
         self.root_states[env_ids] = self.base_init_state

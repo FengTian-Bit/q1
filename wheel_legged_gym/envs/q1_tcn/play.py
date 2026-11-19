@@ -37,15 +37,11 @@ def arguments():
     return args
 
 
-def main():
-    return run(arguments())
-
-
-def run(args, saved=None, scene_builder=None):
+def run(args):
     torch.set_num_threads(1)
-    saved = load_checkpoint(args.checkpoint_path) if saved is None else saved
+    saved = load_checkpoint(args.checkpoint_path)
     seed = args.seed if args.seed is not None else 201
-    cfg, train_cfg = (scene_builder or scenario_config)(saved['config'], 'stand', seed,
+    cfg, train_cfg = scenario_config(saved['config'], 'stand', seed,
                                      args.num_envs or 1, args.duration)
     if args.mode in ['tracking','combined'] and not 0 < args.tracking_speed <= min(-cfg.commands.ranges.lin_vel_x[0],cfg.commands.ranges.lin_vel_x[1]):
         raise ValueError('tracking_speed must be positive and within the trained forward/reverse range')
@@ -120,4 +116,4 @@ def run(args, saved=None, scene_builder=None):
 
 
 if __name__ == '__main__':
-    main()
+    run(arguments())

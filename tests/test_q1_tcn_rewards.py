@@ -151,7 +151,8 @@ class RewardTests(unittest.TestCase):
         expected = dict(tracking_lin_vel=3, tracking_ang_vel=.3, parking_drift=-2,
             orientation=-2, base_height=.5, lateral_velocity=-.5, lin_vel_z=-.2,
             ang_vel_xy=-.05, action_rate=-.01, torques=-.0001, collision=-1,
-            dof_pos_limits=-2, termination=-200)
+            dof_pos_limits=-2, termination=-200,
+            stand_still=-.5, stand_wheel_still=-1.2, run_still=-.05)
         self.assertEqual(set(env.reward_scales), set(expected))
         for name, weight in expected.items():
             self.assertAlmostEqual(env.reward_scales[name], weight*env.dt)
@@ -162,12 +163,12 @@ class RewardTests(unittest.TestCase):
         torch.testing.assert_close(env._reward_tracking_lin_vel(), torch.full((4,), math.exp(-1)))
         torch.testing.assert_close(env._reward_tracking_ang_vel(), torch.full((4,), math.exp(-.25)))
 
-    def test_termination_is_two_points_even_at_timeout_and_logging_sums(self):
+    def test_termination_uses_dt_even_at_timeout_and_logging_sums(self):
         env = tensor_env()
         env.physical_failure[:] = True
         env.time_out_buf[:] = True
         env.compute_reward()
-        torch.testing.assert_close(env.reward_terms['termination'], torch.full((4,), -2.))
+        torch.testing.assert_close(env.reward_terms['termination'], torch.full((4,), -200*env.dt))
         torch.testing.assert_close(sum(env.reward_terms.values()), env.rew_buf)
         env.physical_failure.zero_()
         env.compute_reward()
@@ -198,7 +199,7 @@ class RewardTests(unittest.TestCase):
         position[:, 0] = 2
         parking.update(position, command, .1, cfg)
         torch.testing.assert_close(parking.reference[:, 0], torch.tensor([1.5]))
-        self.assertAlmostEqual(float(parking.penalty(cfg)[0]), 1)
+        self.assertAlmostEqual(float(parking.penalty(cfg)[0]), 23.04, places=4)
         command[:, 0] = .2
         parking.update(position, command, .1, cfg)
         self.assertEqual(float(parking.penalty(cfg)[0]), 0)

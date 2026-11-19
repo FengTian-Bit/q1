@@ -38,15 +38,40 @@ def mirror_history(history, num_obs):
     return mirror_observations(frames).reshape_as(history)
 
 
-def policy_symmetry_loss(model, observations, history, action_mean, motion_weight=None):
+def mirror_slope(slope):
+    """Ground normal XY in the body frame: x is kept, lateral y changes sign."""
+    return slope*slope.new_tensor([1.0, -1.0])
+
+
+def mirror_clearance(clearance):
+    """Left/right wheel clearance swap sides."""
+    return clearance[..., [1, 0]]
+
+
+def mirror_step(step):
+    """[L10, R10, L20, R20]: left/right swap within each distance."""
+    return step[..., [1, 0, 3, 2]]
+
+
+TERRAIN_MIRRORS = {'slope': mirror_slope, 'clearance': mirror_clearance, 'step': mirror_step}
+
+
+def policy_symmetry_loss(model, observations, history, action_mean, motion_weight=None,
+                         estimates=None):
     """Both mean-action branches retain gradients; no sampled actions or critic.
 
     A fully selected frozen parking branch has zero weight, so its existing
-    asymmetry is not used to train an unused moving controller.
+    asymmetry is not used to train an unused moving controller. Terrain heads
+    feed the actor, so they must be mirror-equivariant as well.
     """
-    mirrored, _ = model.distribution(mirror_observations(observations),
+    mirrored, mirrored_estimates = model.distribution(mirror_observations(observations),
                                       mirror_history(history, observations.shape[-1]))
     errors = (action_mean-mirror_actions(mirrored.mean)).square().mean(dim=-1)
+    if estimates is not None:
+        for name, mirror in TERRAIN_MIRRORS.items():
+            if name in estimates:
+                errors = errors+(estimates[name][:len(errors)]
+                                 - mirror(mirrored_estimates[name])).square().mean(dim=-1)
     if motion_weight is None:
         return errors.mean()
     weight = motion_weight.detach().clamp(0, 1)

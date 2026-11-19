@@ -52,11 +52,14 @@ def scenario_config(saved, scenario, seed, num_envs, duration):
     if cfg.rewards.reward_version == 1:
         cfg.rewards.scales.parking_drift = 0.0
     restore_config(cfg, saved["env"])
+    cfg.terrain.spawn_xy_range = 0.0  # preserve fixed acceptance spawn protocol
     restore_config(train_cfg, saved["train"])
     cfg.seed, cfg.env.num_envs = seed, num_envs
     cfg.env.episode_length_s = duration + 2.0  # evaluation horizon never triggers a reset
     cfg.commands.resampling_time = duration + 10.0
     cfg.commands.sequence_fraction = 0.0  # evaluation commands always come from its protocol
+    cfg.commands.permanent_stand_fraction = 0.0
+    cfg.commands.parking_sequence = {}
     cfg.domain_rand.randomize_friction = False
     cfg.domain_rand.randomize_base_mass = False
     cfg.domain_rand.randomize_base_com = False
@@ -74,6 +77,10 @@ def scenario_config(saved, scenario, seed, num_envs, duration):
         cfg.domain_rand.randomize_base_mass = True
         cfg.domain_rand.added_mass_range = [0.75, 0.75]
         cfg.estimator.payload_com_offset_x = 0.02
+    # Flat protocols always run on a plane, also for terrain-trained policies.
+    # The slope evaluator builds its own terrain on top of this configuration.
+    cfg.terrain.mesh_type = "plane"
+    cfg.terrain.curriculum = False
     validate_config(cfg, train_cfg)
     return cfg, train_cfg
 

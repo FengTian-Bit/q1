@@ -24,14 +24,22 @@ LOCAL = "wheel_legged_gym/envs/q1_tcn/"
 SCOPE = dict(NS, F=F, Normal=Normal, Path=Path, csv=csv, json=json,
              gymapi=SimpleNamespace(ENV_SPACE=0), argparse=argparse, random=random,
              deepcopy=copy.deepcopy, copy=copy, sys=sys)
-for filename in ("q1_tcn_config.py", "labels.py", "parking.py", "odometry.py", "curriculum.py", "command_reference.py", "actor_critic.py", "symmetry.py", "ppo.py", "q1_tcn.py",
+for filename in ("q1_tcn_config.py", "labels.py", "parking.py", "odometry.py", "guidance.py", "curriculum.py", "command_reference.py", "actor_critic.py", "symmetry.py", "ppo.py", "q1_tcn.py",
                  "metrics.py", "runner.py", "cli.py", "evaluate.py"):
     # Avoid the evaluate.py __main__ entry and imports of unavailable Isaac Gym.
     SCOPE["__name__"] = "q1_tcn_cpu_tests"
     load_code(LOCAL+filename, SCOPE)
 
 Model = SCOPE["ActorCriticTCN"]
-Config, TrainConfig = SCOPE["Q1TCNCfg"], SCOPE["Q1TCNCfgPPO"]
+BaseTCNConfig, TrainConfig = SCOPE["Q1TCNCfg"], SCOPE["Q1TCNCfgPPO"]
+
+
+class Config(BaseTCNConfig):
+    """Legacy plane fixture with disabled guidance and narrow leg workspace."""
+    class ctbc(BaseTCNConfig.ctbc):
+        guide_lift_range = [0., 0.]
+
+
 PPO = SCOPE["PPO"]
 Task = SCOPE["Q1TCN"]
 

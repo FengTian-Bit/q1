@@ -27,7 +27,8 @@ class PPO:
                  value_loss_coef=1.0, entropy_coef=0.01, max_grad_norm=1.0,
                  desired_kl=0.01, velocity_loss_coef=1.0, contact_loss_coef=1.0,
                  slip_loss_coef=1.0, max_kl=None,
-                 symmetry_loss_coef=0.0, symmetry_batch_size=4096):
+                 symmetry_loss_coef=0.0, symmetry_batch_size=4096,
+                 slope_loss_coef=0.0, clearance_loss_coef=0.0, step_loss_coef=0.0, mask_symmetry_swing=False):
         self.actor_critic = actor_critic
         self.optimizer = torch.optim.Adam(actor_critic.parameters(), lr=learning_rate)
         self.learning_rate = learning_rate
@@ -43,9 +44,11 @@ class PPO:
         if symmetry_loss_coef < 0 or symmetry_batch_size < 1:
             raise ValueError('Symmetry coefficient must be nonnegative and batch size positive')
         self.symmetry_loss_coef = symmetry_loss_coef
+        self.mask_symmetry_swing = bool(mask_symmetry_swing)
         self.symmetry_batch_size = symmetry_batch_size
         self.loss_weights = dict(velocity=velocity_loss_coef, contact=contact_loss_coef,
-                                 slip=slip_loss_coef)
+                                 slip=slip_loss_coef, slope=slope_loss_coef,
+                                 clearance=clearance_loss_coef, step=step_loss_coef)
 
     def update(self, batch, last_values):
         model = self.actor_critic
@@ -81,8 +84,16 @@ class PPO:
                     sym_ids = ids[:count_sym]
                     weight = estimates.get('parking_weight')
                     weight = 1-weight[:count_sym] if weight is not None else None
+                    if self.mask_symmetry_swing:
+                        # A single-leg lift is asymmetric by design; mirroring it would
+                        # train the very symmetry the teacher is breaking.
+                        motion = (~data['ctbc_swing'][sym_ids]).to(weight.dtype
+                                                                   if weight is not None else torch.float32)
+                        weight = motion if weight is None else weight*motion
                     symmetry = policy_symmetry_loss(model, data['obs'][sym_ids],
-                        data['history'][sym_ids], distribution.mean[:count_sym], weight)
+                        data['history'][sym_ids], distribution.mean[:count_sym], weight,
+                        estimates={name: estimates[name][:count_sym]
+                                   for name in ('slope', 'clearance', 'step') if name in estimates})
                     loss = loss+self.symmetry_loss_coef*symmetry
                 with torch.no_grad():
                     old_std, old_mean = data["std"][ids], data["mean"][ids]

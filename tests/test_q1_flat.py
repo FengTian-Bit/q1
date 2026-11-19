@@ -145,7 +145,6 @@ def make_env(count=32, permutation=None, max_delay_ms=0, task_class=Q1Flat, cfg_
     env.viewer, env.init_done, env.custom_origins = None, True, False
     env.render = lambda: None
     env._parse_cfg(cfg)
-    env._init_buffers()
     urdf = ET.parse(source("resources/robots/q1/urdf/q1.urdf")).getroot()
     joints = {joint.get("name"): joint for joint in urdf.findall("joint")}
     env.torque_limits = torch.tensor([float(joints[name].find("limit").get("effort")) for name in env.dof_names])
@@ -153,6 +152,8 @@ def make_env(count=32, permutation=None, max_delay_ms=0, task_class=Q1Flat, cfg_
                                       float(joints[name].find("limit").get("upper"))]
                                      for name in env.dof_names])
     env.dof_vel_limits = torch.tensor([float(joints[name].find("limit").get("velocity")) for name in env.dof_names])
+    # Isaac Gym creates DOF limits before task buffers and lift-workspace tables.
+    env._init_buffers()
     env._prepare_reward_function()
     env.reset_idx(torch.arange(count))
     env._update_leg_kinematics()
@@ -275,16 +276,17 @@ class Q1Tests(unittest.TestCase):
         load_code("wheel_legged_gym/envs/q1/q1_t0.py", namespace)
         load_code("wheel_legged_gym/envs/q1_tcn/q1_tcn_config.py", namespace)
         load_code("wheel_legged_gym/envs/q1_tcn/q1_tcn.py", namespace)
-        load_code("wheel_legged_gym/envs/q1_tcn/task_config.py", namespace)
+        from test_q1_tcn import SCOPE as tcn_scope
+        namespace.update(restore_config=tcn_scope['restore_config'], json=__import__('json'), Path=Path)
+        namespace['__file__'] = str(ROOT/'wheel_legged_gym/envs/q1_tcn/v3_profile.py')
+        load_code("wheel_legged_gym/envs/q1_tcn/v3_profile.py", namespace)
         namespace["ActorCriticTCN"] = object  # network construction is tested separately
-        load_code("wheel_legged_gym/envs/q1_tcn/joint_task.py", namespace)
         namespace["LeggedRobotVMC"] = object
         namespace["task_registry"] = SimpleNamespace(register=lambda name, cls, cfg, train: registered.update({name: (cls, cfg, train)}))
         load_code("wheel_legged_gym/envs/__init__.py", namespace)
-        self.assertEqual(set(registered), {"wheel_legged", "wheel_legged_vmc", "wheel_legged_vmc_flat", "q1_flat", "q1", "q1_ctbc", "q1_ctbc_highcom", "q1_tcn"})
-        self.assertIs(registered["q1_tcn"][0], namespace["Q1TCNJoint"])
-        self.assertTrue(issubclass(registered["q1_tcn"][0], namespace["Q1TCN"]))
         self.assertIs(registered["q1_flat"][0], Q1Flat)
+        self.assertEqual(set(registered), {"wheel_legged", "wheel_legged_vmc", "wheel_legged_vmc_flat", "q1_flat", "q1", "q1_ctbc", "q1_ctbc_highcom", "q1_tcn"})
+        self.assertIs(registered["q1_tcn"][0], namespace["Q1TCN"])
         self.assertIs(registered["q1"][0], namespace["Q1T0CTBC"])
         self.assertTrue(issubclass(registered["q1"][0], namespace["Q1CTBC"]))
         self.assertEqual(registered["q1"][1].terrain.generation_mode, "t0")

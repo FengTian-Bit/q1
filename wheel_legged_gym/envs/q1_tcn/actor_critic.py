@@ -19,6 +19,19 @@ def build_mlp(input_dim, hidden_dims, output_dim):
     return nn.Sequential(*layers)
 
 
+def initial_action_std(value, num_actions, maximum):
+    """Scalar legacy noise or one standard deviation per executed action."""
+    if maximum is not None and (not math.isfinite(maximum) or maximum<=0):
+        raise ValueError('max_noise_std must be positive and finite')
+    std=torch.as_tensor(value,dtype=torch.get_default_dtype())
+    if std.ndim==0:
+        std=std.repeat(num_actions)
+    if (std.shape!=(num_actions,) or not torch.isfinite(std).all()
+            or (std<=0).any() or (maximum is not None and (std>maximum).any())):
+        raise ValueError('init_noise_std must be positive scalar or one bounded std per action')
+    return std
+
+
 class CausalBlock(nn.Module):
     def __init__(self, channels, kernel_size, dilation):
         super().__init__()
@@ -41,13 +54,19 @@ class ActorCriticTCN(nn.Module):
                  freeze_motion_backbone=True, parking_settle=None,
                  parking_fractional_flag=False, braking_wheel_extension=None,
                  wheel_residual_yaw_scale=0., steering_feedforward=None,
-                 motion_wheel_gain=None):
+                 motion_wheel_gain=None, wheel_mean_scale=1.,
+                 actor_output_init_gain=None, min_noise_std=math.exp(-5),
+                 slow_branch=False, slow_history_length=61, slow_channels=32,
+                 slow_dilations=(4, 8, 16, 32), slow_latent_dim=16,
+                 slope_head=False, clearance_head=False, step_head=False):
         super().__init__()
         if ablation not in ABLATIONS:
             raise ValueError("Unknown ablation: {}".format(ablation))
         if not dilations or min(dilations) < 1 or kernel_size < 2:
             raise ValueError("TCN requires positive dilations and kernel_size >= 2")
         self.receptive_field = 1 + (kernel_size - 1) * sum(dilations)
+        # The fast branch always sees exactly history_length frames (the last
+        # ones when a longer slow history is stored), so this check is unchanged.
         if self.receptive_field < history_length:
             raise ValueError("TCN receptive field must cover the history window")
         self.num_obs = num_obs
@@ -58,14 +77,26 @@ class ActorCriticTCN(nn.Module):
         self.wheel_residual_yaw_scale = wheel_residual_yaw_scale
         self.steering_feedforward = steering_feedforward or {}
         self.motion_wheel_gain = motion_wheel_gain or {}
+        if not math.isfinite(wheel_mean_scale) or wheel_mean_scale<=0:
+            raise ValueError('Wheel mean scale must be positive and finite')
+        if wheel_mean_scale!=1 and (num_actions!=6 or self.command_reference
+                or self.motion_wheel_gain or braking_wheel_extension):
+            raise ValueError('Direct wheel mean scaling requires six actions without reference or wheel extensions')
+        if actor_output_init_gain is not None and (not math.isfinite(actor_output_init_gain)
+                or not 0<actor_output_init_gain<=1):
+            raise ValueError('Actor output initialization gain must be in (0, 1]')
+        self.wheel_mean_scale = wheel_mean_scale
         if wheel_residual_yaw_scale < 0:
             raise ValueError('Yaw residual activation scale must be nonnegative')
         if self.command_reference and (num_actions != 6 or num_obs not in (27, 30)):
             raise ValueError('Command reference requires the Q1 six-action observation layout')
         if mean_limit is not None and not 0 < mean_limit <= 1:
             raise ValueError("mean_limit must be in (0, 1] or None")
-        if not 0 < init_noise_std <= max_noise_std:
-            raise ValueError("init_noise_std must be positive and <= max_noise_std")
+        initial_std=initial_action_std(init_noise_std,num_actions,max_noise_std)
+        if min_noise_std is not None and (not math.isfinite(min_noise_std) or min_noise_std<=0):
+            raise ValueError('min_noise_std must be positive and finite or None')
+        if min_noise_std is not None and max_noise_std is not None and min_noise_std>max_noise_std:
+            raise ValueError('min_noise_std must not exceed max_noise_std')
         self.mean_limit = mean_limit
         self.braking_wheel_extension = braking_wheel_extension or {}
         if self.braking_wheel_extension:
@@ -84,7 +115,8 @@ class ActorCriticTCN(nn.Module):
                     raise ValueError('Motion recovery needs both IMU thresholds and a moving limit')
                 if not 0 < cfg['moving_gravity_start'] < cfg['moving_gravity_full'] <= 1:
                     raise ValueError('Motion recovery IMU thresholds must lie in (0, 1]')
-        self.max_log_std = math.log(max_noise_std)
+        self.min_log_std = math.log(min_noise_std) if min_noise_std is not None else None
+        self.max_log_std = math.log(max_noise_std) if max_noise_std is not None else None
         self.register_buffer('_action_output_scale',torch.ones(num_actions),persistent=False)
         if action_output_scale is not None:
             self.set_action_output_scale(action_output_scale)
@@ -98,10 +130,48 @@ class ActorCriticTCN(nn.Module):
         self.velocity_head = nn.Linear(channels, 3)
         self.contact_head = nn.Linear(channels, 2)
         self.slip_head = nn.Linear(channels, 2)
+        # Stage 1 terrain additions. Disabled by default: no extra parameters or
+        # actor inputs, so existing checkpoints and v46 keep their exact layout.
+        self.slow_branch = None
+        self.slope_head = None
+        self.clearance_head = None
+        self.step_head = None
+        extra_inputs = 0
+        if slow_branch:
+            if slow_history_length < history_length:
+                raise ValueError('Slow branch history must cover the fast branch window')
+            slow_field = 1 + (kernel_size - 1) * sum(slow_dilations)
+            if slow_field < slow_history_length:
+                raise ValueError('Slow TCN receptive field must cover the slow history window')
+            self.slow_projection = nn.Conv1d(num_obs, slow_channels, 1)
+            self.slow_branch = nn.Sequential(*[
+                CausalBlock(slow_channels, kernel_size, dilation) for dilation in slow_dilations
+            ])
+            self.slow_latent_head = nn.Linear(slow_channels, slow_latent_dim)
+            extra_inputs += slow_latent_dim
+        # The terrain heads read the longest available window: slow if present.
+        head_width = slow_channels if slow_branch else channels
+        if slope_head:
+            self.slope_head = nn.Linear(head_width, 2)
+            extra_inputs += 2
+        if clearance_head:
+            self.clearance_head = nn.Linear(head_width, 2)
+            extra_inputs += 2
+        if step_head:
+            # Rise of the terrain 0.10 m and 0.20 m ahead of each wheel: L10, R10, L20, R20.
+            self.step_head = nn.Linear(head_width, 4)
+            extra_inputs += 4
+        self.slow_history_length = slow_history_length if slow_branch else history_length
         # All ablations retain seven input slots and exactly the same parameters.
-        self.actor = build_mlp(num_obs + latent_dim + 7, actor_hidden_dims, num_actions)
+        self.actor = build_mlp(num_obs + latent_dim + 7 + extra_inputs, actor_hidden_dims, num_actions)
+        if actor_output_init_gain is not None:
+            # A fresh policy starts close to nominal leg targets and zero wheel speed.
+            # Default None preserves historical initialization exactly.
+            with torch.no_grad():
+                self.actor[-1].weight.mul_(actor_output_init_gain)
+                self.actor[-1].bias.zero_()
         self.critic = build_mlp(num_critic_obs, critic_hidden_dims, 1)
-        self.log_std = nn.Parameter(torch.full((num_actions,), float(init_noise_std)).log())
+        self.log_std = nn.Parameter(initial_std.log())
         self.log_std.requires_grad_(learn_noise)
         self.wheel_residual = None
         self.wheel_residual_limit = wheel_residual_limit
@@ -141,13 +211,16 @@ class ActorCriticTCN(nn.Module):
                 kernel_size=kernel_size, latent_dim=latent_dim,
                 actor_hidden_dims=actor_hidden_dims, critic_hidden_dims=critic_hidden_dims,
                 init_noise_std=init_noise_std, mean_limit=mean_limit,
-                max_noise_std=max_noise_std, learn_noise=False)
+                max_noise_std=max_noise_std, min_noise_std=min_noise_std, learn_noise=False)
             for parameter in self.parking_policy.parameters():
                 parameter.requires_grad_(False)
 
     @property
     def action_std(self):
-        return self.log_std.clamp(-5, self.max_log_std).exp()*self._action_output_scale
+        log_std = self.log_std
+        if self.min_log_std is not None or self.max_log_std is not None:
+            log_std = log_std.clamp(self.min_log_std, self.max_log_std)
+        return log_std.exp()*self._action_output_scale
 
     def set_action_output_scale(self, values):
         scale=torch.as_tensor(values,dtype=self._action_output_scale.dtype,
@@ -159,21 +232,41 @@ class ActorCriticTCN(nn.Module):
         self._action_output_scale.copy_(scale)
 
     def constrain_distribution_parameters(self):
-        with torch.no_grad():
-            self.log_std.clamp_(-5, self.max_log_std)
+        if self.min_log_std is not None or self.max_log_std is not None:
+            with torch.no_grad():
+                self.log_std.clamp_(self.min_log_std, self.max_log_std)
 
-    def encode(self, history):
+    def encode(self, history, slow_history=None):
         history = history.reshape(-1, self.history_length, self.num_obs).transpose(1, 2)
         h = self.tcn(self.input_projection(history))[:, :, -1]
-        return {
+        estimates = {
             "latent": self.latent_head(h),
             # Keep checkpoint parameter layout, but do not run a disabled head.
             "velocity": self.velocity_head(h) if self.enabled[0] else h.new_zeros(h.shape[0], 3),
             "contact_logits": self.contact_head(h),
             "slip": self.slip_head(h),
         }
+        terrain = h
+        if self.slow_branch is not None:
+            frames = slow_history.reshape(-1, self.slow_history_length, self.num_obs).transpose(1, 2)
+            terrain = self.slow_branch(self.slow_projection(frames))[:, :, -1]
+            estimates["slow_latent"] = self.slow_latent_head(terrain)
+        if self.slope_head is not None:
+            estimates["slope"] = self.slope_head(terrain)
+        if self.clearance_head is not None:
+            estimates["clearance"] = self.clearance_head(terrain)
+        if self.step_head is not None:
+            estimates["step"] = self.step_head(terrain)
+        return estimates
+
+    def split_history(self, history):
+        """Return (fast 16-frame history, full slow history) from the stored window."""
+        if self.slow_history_length == self.history_length:
+            return history, history
+        return history[:, -self.history_length*self.num_obs:], history
 
     def distribution(self, obs, history):
+        history, slow_history = self.split_history(history)
         original_obs, original_history = obs, history
         if self.parking_fractional_flag:
             obs, history = obs.clone(), history.clone()
@@ -184,15 +277,21 @@ class ActorCriticTCN(nn.Module):
         offset = None
         if self.command_reference:
             obs, history, offset = command_reference_inputs(obs, history, **self.command_reference)
-        estimates = self.encode(history)
+        estimates = self.encode(history, slow_history)
         slots = [estimates["velocity"], estimates["contact_logits"].sigmoid(), estimates["slip"]]
         slots = [value.detach() if enabled else torch.zeros_like(value)
                  for value, enabled in zip(slots, self.enabled)]
-        mean = self.actor(torch.cat([obs, estimates["latent"]] + slots, dim=-1))
+        # Slow latent trains through PPO like the fast latent; supervised terrain
+        # heads are detached so only their own losses shape them.
+        terrain = [estimates[name] if name == "slow_latent" else estimates[name].detach()
+                   for name in ("slow_latent", "slope", "clearance", "step") if name in estimates]
+        mean = self.actor(torch.cat([obs, estimates["latent"]] + slots + terrain, dim=-1))
         estimates["action_mean_unbounded"] = mean
         if self.mean_limit is not None:
             mean = self.mean_limit*torch.tanh(mean)
         mean = mean*self._action_output_scale
+        if self.wheel_mean_scale!=1:
+            mean=mean.clone();mean[:,[2,5]]=mean[:,[2,5]]*self.wheel_mean_scale
         if self.motion_wheel_gain:
             cfg=self.motion_wheel_gain
             speed=original_obs[:,6].abs()/cfg['command_scale']
@@ -313,4 +412,11 @@ def estimation_losses(estimates, targets, enabled):
         mask = valid[:, None] & (targets[:, 8:10] > 0.5)
         if mask.any():
             losses["slip"] = F.smooth_l1_loss(estimates["slip"][mask], targets[:, 5:7][mask])
+    # Stage 1 terrain labels, columns 10:12 slope normal XY and 12:14 wheel clearance.
+    if "slope" in estimates and targets.shape[1] >= 14 and valid.any():
+        losses["slope"] = F.smooth_l1_loss(estimates["slope"][valid], targets[valid, 10:12])
+    if "clearance" in estimates and targets.shape[1] >= 14 and valid.any():
+        losses["clearance"] = F.smooth_l1_loss(estimates["clearance"][valid], targets[valid, 12:14])
+    if "step" in estimates and targets.shape[1] >= 18 and valid.any():
+        losses["step"] = F.smooth_l1_loss(estimates["step"][valid], targets[valid, 14:18])
     return losses
